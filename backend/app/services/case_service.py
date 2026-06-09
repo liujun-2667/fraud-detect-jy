@@ -391,6 +391,9 @@ async def get_case_stats(db: AsyncSession) -> CaseStatsResponse:
     investigating_stmt = select(func.count(FraudCase.id)).where(
         FraudCase.status == CaseStatus.INVESTIGATING
     )
+    overtime_stmt = select(func.count(FraudCase.id)).where(
+        and_(FraudCase.status != CaseStatus.CLOSED, FraudCase.is_overtime == True)
+    )
 
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     today_closed_stmt = select(func.count(FraudCase.id)).where(
@@ -399,10 +402,12 @@ async def get_case_stats(db: AsyncSession) -> CaseStatsResponse:
 
     pending_result = await db.execute(pending_stmt)
     investigating_result = await db.execute(investigating_stmt)
+    overtime_result = await db.execute(overtime_stmt)
     today_closed_result = await db.execute(today_closed_stmt)
 
     pending_count = int(pending_result.scalar_one())
     investigating_count = int(investigating_result.scalar_one())
+    overtime_count = int(overtime_result.scalar_one())
     today_closed_count = int(today_closed_result.scalar_one())
 
     avg_hours_stmt = select(FraudCase).where(
@@ -418,11 +423,6 @@ async def get_case_stats(db: AsyncSession) -> CaseStatsResponse:
             total_hours += delta.total_seconds() / 3600.0
 
     avg_hours = round(total_hours / len(closed_cases), 1) if closed_cases else 0.0
-
-    all_open_cases_stmt = select(FraudCase).where(FraudCase.status != CaseStatus.CLOSED)
-    all_open_result = await db.execute(all_open_cases_stmt)
-    all_open_cases = list(all_open_result.scalars().all())
-    overtime_count = sum(1 for c in all_open_cases if is_case_overtime(c))
 
     return CaseStatsResponse(
         pending_count=pending_count,
@@ -484,10 +484,14 @@ async def count_fraud_history(
 async def check_and_mark_overtime(
     db: AsyncSession,
 ) -> list[FraudCase]:
+    min_timeout_hours = min(RISK_TIMEOUT_HOURS.values())
+    cutoff = datetime.utcnow() - timedelta(hours=min_timeout_hours)
+
     stmt = select(FraudCase).where(
         and_(
             FraudCase.status != CaseStatus.CLOSED,
-            FraudCase.is_overtime == False,
+            FraudCase.is_overtime.is_(False),
+            FraudCase.created_at <= cutoff,
         )
     )
     result = await db.execute(stmt)
@@ -607,7 +611,7 @@ def build_case_response(
         rule_hits=rule_hits,
         notes=notes,
         history_transactions=history_txns or [],
-        is_overtime=case.is_overtime or is_case_overtime(case),
+        is_overtime=case.is_overtime,
         related_cases=related_cases or [],
         fraud_history_count=fraud_history_count,
     )

@@ -108,6 +108,11 @@ const CaseDetail: React.FC = () => {
   };
 
   useEffect(() => {
+    setCaseData(null);
+    setNoteContent('');
+    setTransferModalOpen(false);
+    transferForm.resetFields();
+    closeForm.resetFields();
     loadCase();
   }, [id]);
 

@@ -327,7 +327,7 @@ const buildMockCases = (): Case[] => {
     const sameCardCases: CaseRelatedCase[] = mockTransactions
       .filter((t, i) => t.card_hash === txn.card_hash && i !== idx)
       .slice(0, 5)
-      .map((t, i) => {
+      .map((t) => {
         const otherIdx = mockTransactions.indexOf(t);
         return {
           id: otherIdx + 1,
