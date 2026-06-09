@@ -196,3 +196,66 @@ export interface SandboxTest {
   created_at: string;
   sample_results: any[];
 }
+
+export type CaseStatus = 'pending' | 'investigating' | 'closed';
+export type CaseRiskLevel = 'high' | 'medium' | 'low';
+export type CaseConclusion = 'pass' | 'fraud' | 'false_positive';
+
+export interface CaseRuleHit {
+  rule_name: string;
+  trigger_condition: string;
+  score: number;
+}
+
+export interface CaseNote {
+  id: number;
+  content: string;
+  operator: string;
+  created_at: string;
+}
+
+export interface CaseHistoryTxn {
+  id: number;
+  transaction_no: string;
+  amount: number;
+  transaction_time: string;
+  risk_score: number;
+  decision: DecisionType;
+  is_abnormal: boolean;
+}
+
+export interface Case {
+  id: number;
+  case_no: string;
+  status: CaseStatus;
+  risk_level: CaseRiskLevel;
+  risk_score: number;
+  assigned_to?: string;
+  assigned_to_name?: string;
+  assigned_at?: string;
+  conclusion?: CaseConclusion;
+  conclusion_note?: string;
+  closed_at?: string;
+  created_at: string;
+  updated_at: string;
+  transaction_id: number;
+  transaction: Transaction;
+  rule_hits: CaseRuleHit[];
+  notes: CaseNote[];
+  history_transactions: CaseHistoryTxn[];
+}
+
+export interface CaseStats {
+  pending_count: number;
+  investigating_count: number;
+  today_closed_count: number;
+  avg_processing_hours: number;
+}
+
+export interface CaseListFilter {
+  status?: CaseStatus;
+  risk_level?: CaseRiskLevel;
+  start_time?: string;
+  end_time?: string;
+  assigned_to?: string;
+}

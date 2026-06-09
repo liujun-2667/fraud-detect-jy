@@ -11,6 +11,8 @@ import Templates from './pages/Templates';
 import Transactions from './pages/Transactions';
 import Alerts from './pages/Alerts';
 import Sandbox from './pages/Sandbox';
+import CasesList from './pages/Cases';
+import CaseDetail from './pages/Cases/CaseDetail';
 
 const App: React.FC = () => {
   return (
@@ -25,6 +27,8 @@ const App: React.FC = () => {
             <Route path="rules/:id/edit" element={<RuleEditor />} />
             <Route path="templates" element={<Templates />} />
             <Route path="transactions" element={<Transactions />} />
+            <Route path="cases" element={<CasesList />} />
+            <Route path="cases/:id" element={<CaseDetail />} />
             <Route path="alerts" element={<Alerts />} />
             <Route path="sandbox" element={<Sandbox />} />
           </Route>

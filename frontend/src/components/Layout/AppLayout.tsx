@@ -13,6 +13,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   ThunderboltOutlined,
+  FileSearchOutlined,
 } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -24,6 +25,11 @@ const menuItems: MenuProps['items'] = [
     key: '/dashboard',
     icon: <DashboardOutlined />,
     label: '实时监控看板',
+  },
+  {
+    key: '/cases',
+    icon: <FileSearchOutlined />,
+    label: '案件调查工作台',
   },
   {
     key: '/rules',
@@ -67,6 +73,9 @@ const AppLayout: React.FC = () => {
     }
     if (location.pathname.startsWith('/templates')) {
       return '/templates';
+    }
+    if (location.pathname.startsWith('/cases')) {
+      return '/cases';
     }
     return location.pathname;
   };

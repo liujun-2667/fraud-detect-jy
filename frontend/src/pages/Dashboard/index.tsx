@@ -22,9 +22,14 @@ import {
   WarningOutlined,
   CheckCircleOutlined,
   ReloadOutlined,
+  FileSearchOutlined,
+  UserOutlined,
+  ClockCircleOutlined,
+  RiseOutlined,
 } from '@ant-design/icons';
 import { Line, Column, Heatmap, Pie } from '@ant-design/charts';
 import dayjs from 'dayjs';
+import { useNavigate } from 'react-router-dom';
 import {
   getDashboardOverview,
   getTrend,
@@ -43,11 +48,16 @@ import {
   HeatmapPoint,
   Transaction,
   TemplateUsageStat,
+  CaseStats,
 } from '../../types';
+import { useCaseStore } from '../../store/useCaseStore';
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
+  const { getStats: getCaseStatsData } = useCaseStore();
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overview, setOverview] = useState<DashboardOverviewType | null>(null);
+  const [caseStats, setCaseStats] = useState<CaseStats | null>(null);
   const [trendDays, setTrendDays] = useState<number>(7);
   const [trendLoading, setTrendLoading] = useState(false);
   const [trendData, setTrendData] = useState<TrendPoint[]>([]);
@@ -83,6 +93,15 @@ const Dashboard: React.FC = () => {
       setError(e.message || '获取概览数据失败');
     } finally {
       setOverviewLoading(false);
+    }
+  };
+
+  const loadCaseStats = () => {
+    try {
+      const stats = getCaseStatsData();
+      setCaseStats(stats);
+    } catch (e: any) {
+      // silent
     }
   };
 
@@ -180,6 +199,7 @@ const Dashboard: React.FC = () => {
 
   const refreshAll = () => {
     loadOverview();
+    loadCaseStats();
     loadTrend(trendDays);
     loadRuleHitStats();
     loadHeatmaps();
@@ -367,6 +387,60 @@ const Dashboard: React.FC = () => {
                 value={overview?.review_count || 0}
                 prefix={<CheckCircleOutlined />}
                 valueStyle={{ color: '#faad14' }}
+              />
+            </Card>
+          </Col>
+        </Row>
+      </Card>
+
+      <Card
+        title="案件处理统计"
+        extra={
+          <Button type="link" onClick={() => navigate('/cases')}>
+            查看工作台
+          </Button>
+        }
+      >
+        <Row gutter={16}>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="待分配案件"
+                value={caseStats?.pending_count || 0}
+                prefix={<FileSearchOutlined />}
+                valueStyle={{ color: '#faad14' }}
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="调查中案件"
+                value={caseStats?.investigating_count || 0}
+                prefix={<UserOutlined />}
+                valueStyle={{ color: '#1677ff' }}
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="今日结案数"
+                value={caseStats?.today_closed_count || 0}
+                prefix={<CheckCircleOutlined />}
+                valueStyle={{ color: '#52c41a' }}
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="平均处理时长"
+                value={caseStats?.avg_processing_hours || 0}
+                precision={1}
+                suffix="小时"
+                prefix={<ClockCircleOutlined />}
+                valueStyle={{ color: '#722ed1' }}
               />
             </Card>
           </Col>
