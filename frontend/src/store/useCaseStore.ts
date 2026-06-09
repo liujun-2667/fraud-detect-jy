@@ -13,14 +13,19 @@ import {
   CaseHistoryTxn,
   DecisionType,
   PaginatedResponse,
+  AnalystInfo,
+  CaseRelatedCase,
 } from '../types';
 import {
   getCases as apiGetCases,
   getCaseById as apiGetCaseById,
   assignCase as apiAssignCase,
+  autoAssignCase as apiAutoAssignCase,
+  transferCase as apiTransferCase,
   closeCase as apiCloseCase,
   addCaseNote as apiAddCaseNote,
   getCaseStats as apiGetCaseStats,
+  getAnalysts as apiGetAnalysts,
 } from '../api/cases';
 
 const scoreToRiskLevel = (score: number): CaseRiskLevel => {
@@ -119,7 +124,7 @@ const mockTransactions: Transaction[] = [
     id: 1006,
     transaction_no: 'TX202606080006',
     card_no: '6227****3333',
-    card_hash: 'f6g7h8i9j0k1l2m3',
+    card_hash: 'a1b2c3d4e5f6g7h8',
     device_id: 'DEV-6C7D-4E8F',
     amount: 95000,
     merchant_id: 'M006',
@@ -135,7 +140,7 @@ const mockTransactions: Transaction[] = [
     id: 1007,
     transaction_no: 'TX202606070007',
     card_no: '6259****4444',
-    card_hash: 'g7h8i9j0k1l2m3n4',
+    card_hash: 'b2c3d4e5f6g7h8i9',
     device_id: 'DEV-9G1H-2I3J',
     amount: 180000,
     merchant_id: 'M007',
@@ -304,6 +309,7 @@ const generateHistoryTxns = (cardHash: string, baseTime: string): CaseHistoryTxn
 const now = dayjs();
 
 const analystNames = ['张伟', '李娜', '王芳', '刘洋', '陈静'];
+const analystIds = ['user_1', 'user_2', 'user_3', 'user_4', 'user_5'];
 
 const buildMockCases = (): Case[] => {
   return mockTransactions.map((txn, idx) => {
@@ -317,6 +323,25 @@ const buildMockCases = (): Case[] => {
         : undefined;
     const closedAt = status === 'closed' ? now.subtract(idx, 'hour').toISOString() : undefined;
     const createdAt = now.subtract(idx * 3 + 2, 'hour').toISOString();
+
+    const isOvertime = status !== 'closed' && now.diff(dayjs(createdAt), 'hour') > (riskScore >= 71 ? 24 : riskScore >= 41 ? 48 : 72);
+
+    const sameCardCases: CaseRelatedCase[] = mockTransactions
+      .filter((t, i) => t.card_hash === txn.card_hash && i !== idx)
+      .slice(0, 5)
+      .map((t, i) => {
+        const otherIdx = mockTransactions.indexOf(t);
+        return {
+          id: otherIdx + 1,
+          case_no: generateCaseNo(now.subtract((otherIdx + 1) * 3, 'hour').toISOString(), otherIdx + 1),
+          risk_level: scoreToRiskLevel(mockRuleHitsSets[otherIdx % mockRuleHitsSets.length].reduce((s, h) => s + h.score, 0)),
+          status: otherIdx < 3 ? 'pending' : otherIdx < 7 ? 'investigating' : 'closed',
+          created_at: now.subtract((otherIdx + 1) * 3, 'hour').toISOString(),
+          conclusion: otherIdx >= 7 ? (['pass', 'fraud', 'false_positive'] as CaseConclusion[])[otherIdx % 3] : undefined,
+        };
+      });
+
+    const fraudHistoryCount = sameCardCases.filter((c) => c.conclusion === 'fraud').length;
 
     return {
       id: idx + 1,
@@ -364,17 +389,54 @@ const buildMockCases = (): Case[] => {
             ]
           : [],
       history_transactions: generateHistoryTxns(txn.card_hash, txn.transaction_time),
+      is_overtime: isOvertime,
+      related_cases: sameCardCases,
+      fraud_history_count: fraudHistoryCount,
     };
   });
 };
 
+export const requestNotificationPermission = async (): Promise<boolean> => {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return false;
+  }
+  if (Notification.permission === 'granted') {
+    return true;
+  }
+  if (Notification.permission !== 'denied') {
+    const permission = await Notification.requestPermission();
+    return permission === 'granted';
+  }
+  return false;
+};
+
+export const sendBrowserNotification = (title: string, body: string) => {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission === 'granted') {
+    try {
+      new Notification(title, { body, icon: '/favicon.ico' });
+    } catch (e) {
+      // ignore
+    }
+  }
+};
+
 export interface CaseStoreState {
   cases: Case[];
+  analysts: AnalystInfo[];
+  wsConnected: boolean;
   getCaseList: (
     filter: CaseListFilter & { page: number; page_size: number },
   ) => Promise<PaginatedResponse<Case>>;
   getCase: (id: number) => Case | undefined;
   assignCase: (caseId: number, userId: string, userName: string) => Promise<Case | undefined>;
+  autoAssignCase: (caseId: number) => Promise<Case | undefined>;
+  transferCase: (
+    caseId: number,
+    targetUserId: string,
+    targetUserName: string,
+    reason: string,
+  ) => Promise<Case | undefined>;
   closeCase: (
     caseId: number,
     conclusion: CaseConclusion,
@@ -382,10 +444,20 @@ export interface CaseStoreState {
   ) => Promise<Case | undefined>;
   addNote: (caseId: number, content: string, operator: string) => Promise<Case | undefined>;
   getStats: () => Promise<CaseStats>;
+  getAnalysts: () => Promise<AnalystInfo[]>;
+  updateCase: (caseId: number, updated: Case) => void;
+  setWsConnected: (connected: boolean) => void;
 }
 
 export const useCaseStore = create<CaseStoreState>((set, get) => ({
   cases: buildMockCases(),
+  analysts: analystIds.map((id, idx) => ({
+    user_id: id,
+    user_name: analystNames[idx],
+    active_cases: 0,
+    last_assigned_at: undefined,
+  })),
+  wsConnected: false,
 
   getCaseList: async (filter) => {
     try {
@@ -469,6 +541,114 @@ export const useCaseStore = create<CaseStoreState>((set, get) => ({
     return assigned;
   },
 
+  autoAssignCase: async (caseId) => {
+    try {
+      const res = await apiAutoAssignCase(caseId);
+      if (res.code === 0 && res.data) {
+        set((state) => ({
+          cases: state.cases.map((c) => (c.id === caseId ? res.data! : c)),
+        }));
+        if (res.data.assigned_to_name) {
+          sendBrowserNotification(
+            '案件已分配',
+            `案件${res.data.case_no}已自动分配给${res.data.assigned_to_name}`,
+          );
+        }
+        return res.data;
+      }
+    } catch {
+      // fallback to local mock
+    }
+
+    let assigned: Case | undefined;
+    set((state) => {
+      const activeCounts: Record<string, number> = {};
+      state.cases.forEach((c) => {
+        if (c.status === 'investigating' && c.assigned_to) {
+          activeCounts[c.assigned_to] = (activeCounts[c.assigned_to] || 0) + 1;
+        }
+      });
+
+      const analystList = analystIds.map((id, idx) => ({
+        user_id: id,
+        user_name: analystNames[idx],
+        active_cases: activeCounts[id] || 0,
+      }));
+      analystList.sort((a, b) => a.active_cases - b.active_cases);
+      const selected = analystList[0];
+
+      const newCases = state.cases.map((c) => {
+        if (c.id === caseId && c.status === 'pending') {
+          assigned = {
+            ...c,
+            status: 'investigating',
+            assigned_to: selected.user_id,
+            assigned_to_name: selected.user_name,
+            assigned_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          return assigned;
+        }
+        return c;
+      });
+
+      if (assigned) {
+        sendBrowserNotification(
+          '案件已分配',
+          `案件${assigned.case_no}已自动分配给${assigned.assigned_to_name}`,
+        );
+      }
+
+      return { cases: newCases };
+    });
+    return assigned;
+  },
+
+  transferCase: async (caseId, targetUserId, targetUserName, reason) => {
+    try {
+      const res = await apiTransferCase(caseId, {
+        target_user_id: targetUserId,
+        target_user_name: targetUserName,
+        reason,
+      });
+      if (res.code === 0 && res.data) {
+        set((state) => ({
+          cases: state.cases.map((c) => (c.id === caseId ? res.data! : c)),
+        }));
+        return res.data;
+      }
+    } catch {
+      // fallback to local mock
+    }
+
+    let transferred: Case | undefined;
+    set((state) => {
+      const newCases = state.cases.map((c) => {
+        if (c.id === caseId && c.status === 'investigating') {
+          const originalOwnerName = c.assigned_to_name || '未知';
+          const systemNote: CaseNote = {
+            id: (c.notes?.length || 0) + 1,
+            content: `[系统] ${originalOwnerName}将案件转派给${targetUserName},原因:${reason}`,
+            operator: '系统',
+            created_at: new Date().toISOString(),
+          };
+          transferred = {
+            ...c,
+            assigned_to: targetUserId,
+            assigned_to_name: targetUserName,
+            assigned_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            notes: [...(c.notes || []), systemNote],
+          };
+          return transferred;
+        }
+        return c;
+      });
+      return { cases: newCases };
+    });
+    return transferred;
+  },
+
   closeCase: async (caseId, conclusion, conclusionNote) => {
     try {
       const res = await apiCloseCase(caseId, { conclusion, conclusion_note: conclusionNote });
@@ -493,6 +673,7 @@ export const useCaseStore = create<CaseStoreState>((set, get) => ({
             conclusion_note: conclusionNote,
             closed_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
+            is_overtime: false,
           };
           return closed;
         }
@@ -565,11 +746,53 @@ export const useCaseStore = create<CaseStoreState>((set, get) => ({
     }, 0);
     const avgHours = closedCases.length > 0 ? Number((totalHours / closedCases.length).toFixed(1)) : 0;
 
+    const overtimeCount = cases.filter((c) => c.status !== 'closed' && c.is_overtime).length;
+
     return {
       pending_count: pendingCount,
       investigating_count: investigatingCount,
       today_closed_count: todayClosed,
       avg_processing_hours: avgHours,
+      overtime_count: overtimeCount,
     };
+  },
+
+  getAnalysts: async () => {
+    try {
+      const res = await apiGetAnalysts();
+      if (res.code === 0 && res.data) {
+        set({ analysts: res.data });
+        return res.data;
+      }
+    } catch {
+      // fallback to local mock
+    }
+
+    const { cases } = get();
+    const activeCounts: Record<string, number> = {};
+    cases.forEach((c) => {
+      if (c.status === 'investigating' && c.assigned_to) {
+        activeCounts[c.assigned_to] = (activeCounts[c.assigned_to] || 0) + 1;
+      }
+    });
+    const list = analystIds.map((id, idx) => ({
+      user_id: id,
+      user_name: analystNames[idx],
+      active_cases: activeCounts[id] || 0,
+      last_assigned_at: undefined,
+    }));
+    list.sort((a, b) => a.active_cases - b.active_cases);
+    set({ analysts: list });
+    return list;
+  },
+
+  updateCase: (caseId, updated) => {
+    set((state) => ({
+      cases: state.cases.map((c) => (c.id === caseId ? updated : c)),
+    }));
+  },
+
+  setWsConnected: (connected) => {
+    set({ wsConnected: connected });
   },
 }));

@@ -224,6 +224,22 @@ export interface CaseHistoryTxn {
   is_abnormal: boolean;
 }
 
+export interface CaseRelatedCase {
+  id: number;
+  case_no: string;
+  risk_level: CaseRiskLevel;
+  status: CaseStatus;
+  created_at: string;
+  conclusion?: CaseConclusion;
+}
+
+export interface AnalystInfo {
+  user_id: string;
+  user_name: string;
+  active_cases: number;
+  last_assigned_at?: string;
+}
+
 export interface Case {
   id: number;
   case_no: string;
@@ -243,6 +259,9 @@ export interface Case {
   rule_hits: CaseRuleHit[];
   notes: CaseNote[];
   history_transactions: CaseHistoryTxn[];
+  is_overtime: boolean;
+  related_cases: CaseRelatedCase[];
+  fraud_history_count: number;
 }
 
 export interface CaseStats {
@@ -250,6 +269,7 @@ export interface CaseStats {
   investigating_count: number;
   today_closed_count: number;
   avg_processing_hours: number;
+  overtime_count: number;
 }
 
 export interface CaseListFilter {

@@ -15,21 +15,40 @@ from app.models.case import (
     FraudCase,
 )
 from app.schemas.case import (
+    AnalystInfo,
     CaseCloseRequest,
     CaseCreateFromTransaction,
     CaseNoteCreate,
+    CaseRelatedCase,
     CaseResponse,
     CaseStatsResponse,
     CaseTransactionInfo,
     CaseHistoryTxn,
     CaseRuleHit,
     CaseNoteResponse,
+    CaseTransferRequest,
 )
 
 
 CASE_NO_COUNTER_KEY = "fraud:case:counter:{date}"
 CASE_LOCK_KEY = "fraud:case:lock:{case_id}"
 CASE_LOCK_TTL = 30
+
+ANALYST_LAST_ASSIGNED_KEY = "fraud:analyst:last_assigned:{user_id}"
+
+RISK_TIMEOUT_HOURS = {
+    CaseRiskLevel.HIGH: 24,
+    CaseRiskLevel.MEDIUM: 48,
+    CaseRiskLevel.LOW: 72,
+}
+
+DEFAULT_ANALYSTS = [
+    ("user_1", "张伟"),
+    ("user_2", "李娜"),
+    ("user_3", "王芳"),
+    ("user_4", "刘洋"),
+    ("user_5", "陈静"),
+]
 
 
 def score_to_risk_level(score: int) -> CaseRiskLevel:
@@ -41,11 +60,6 @@ def score_to_risk_level(score: int) -> CaseRiskLevel:
 
 
 async def generate_case_no(redis_client: redis.Redis, created_at: Optional[datetime] = None) -> str:
-    """
-    并发安全的案件编号生成
-    使用Redis INCR保证每日序号的原子性递增
-    格式: CAS-YYYYMMDD-XXXX
-    """
     if created_at is None:
         created_at = datetime.utcnow()
     date_str = created_at.strftime("%Y%m%d")
@@ -59,18 +73,22 @@ async def generate_case_no(redis_client: redis.Redis, created_at: Optional[datet
 
 
 async def acquire_case_lock(redis_client: redis.Redis, case_id: int) -> bool:
-    """
-    获取案件分布式锁，用于认领操作的并发控制
-    """
     lock_key = CASE_LOCK_KEY.format(case_id=case_id)
     result = await redis_client.set(lock_key, "1", ex=CASE_LOCK_TTL, nx=True)
     return bool(result)
 
 
 async def release_case_lock(redis_client: redis.Redis, case_id: int) -> None:
-    """释放案件分布式锁"""
     lock_key = CASE_LOCK_KEY.format(case_id=case_id)
     await redis_client.delete(lock_key)
+
+
+def is_case_overtime(case: FraudCase) -> bool:
+    if case.status == CaseStatus.CLOSED:
+        return False
+    timeout_hours = RISK_TIMEOUT_HOURS.get(case.risk_level, 72)
+    deadline = case.created_at + timedelta(hours=timeout_hours)
+    return datetime.utcnow() > deadline
 
 
 async def create_case_from_transaction(
@@ -78,7 +96,6 @@ async def create_case_from_transaction(
     redis_client: redis.Redis,
     request: CaseCreateFromTransaction,
 ) -> FraudCase:
-    """从交易评估结果创建案件"""
     stmt = select(Transaction).where(Transaction.id == request.transaction_id)
     result = await db.execute(stmt)
     txn = result.scalar_one_or_none()
@@ -94,10 +111,12 @@ async def create_case_from_transaction(
         risk_score=request.risk_score,
         transaction_id=request.transaction_id,
         rule_hits=[rh.model_dump() for rh in request.rule_hits],
+        is_overtime=False,
     )
     db.add(case)
     await db.flush()
     await db.refresh(case)
+
     return case
 
 
@@ -162,6 +181,92 @@ async def list_cases(
     return cases, total
 
 
+async def get_analysts_with_stats(
+    db: AsyncSession, redis_client: redis.Redis
+) -> list[AnalystInfo]:
+    stmt = (
+        select(FraudCase.assigned_to, FraudCase.assigned_to_name, func.count(FraudCase.id))
+        .where(
+            and_(
+                FraudCase.status == CaseStatus.INVESTIGATING,
+                FraudCase.assigned_to.isnot(None),
+            )
+        )
+        .group_by(FraudCase.assigned_to, FraudCase.assigned_to_name)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    active_counts: dict[str, int] = {}
+    analyst_names: dict[str, str] = {}
+    for row in rows:
+        uid, uname, cnt = row
+        if uid:
+            active_counts[uid] = int(cnt)
+            if uname:
+                analyst_names[uid] = uname
+
+    analysts: list[AnalystInfo] = []
+    for uid, uname in DEFAULT_ANALYSTS:
+        last_assigned_str = await redis_client.get(ANALYST_LAST_ASSIGNED_KEY.format(user_id=uid))
+        last_assigned_at = None
+        if last_assigned_str:
+            try:
+                last_assigned_at = datetime.fromisoformat(last_assigned_str)
+            except Exception:
+                pass
+
+        analysts.append(
+            AnalystInfo(
+                user_id=uid,
+                user_name=analyst_names.get(uid, uname),
+                active_cases=active_counts.get(uid, 0),
+                last_assigned_at=last_assigned_at,
+            )
+        )
+
+    analysts.sort(key=lambda a: (a.active_cases, a.last_assigned_at or datetime.min))
+    return analysts
+
+
+async def auto_assign_case(
+    db: AsyncSession,
+    redis_client: redis.Redis,
+    case_id: int,
+) -> Optional[FraudCase]:
+    lock_acquired = await acquire_case_lock(redis_client, case_id)
+    if not lock_acquired:
+        return None
+
+    try:
+        case = await get_case_by_id(db, case_id)
+        if case is None or case.status != CaseStatus.PENDING:
+            return None
+
+        analysts = await get_analysts_with_stats(db, redis_client)
+        if not analysts:
+            return None
+
+        selected = analysts[0]
+
+        case.status = CaseStatus.INVESTIGATING
+        case.assigned_to = selected.user_id
+        case.assigned_to_name = selected.user_name
+        case.assigned_at = datetime.utcnow()
+        case.updated_at = datetime.utcnow()
+
+        await redis_client.set(
+            ANALYST_LAST_ASSIGNED_KEY.format(user_id=selected.user_id),
+            case.assigned_at.isoformat(),
+        )
+
+        await db.flush()
+        await db.refresh(case)
+        return case
+    finally:
+        await release_case_lock(redis_client, case_id)
+
+
 async def assign_case(
     db: AsyncSession,
     redis_client: redis.Redis,
@@ -169,9 +274,6 @@ async def assign_case(
     user_id: str,
     user_name: str,
 ) -> Optional[FraudCase]:
-    """
-    认领案件，使用Redis分布式锁保证并发安全
-    """
     lock_acquired = await acquire_case_lock(redis_client, case_id)
     if not lock_acquired:
         return None
@@ -187,11 +289,49 @@ async def assign_case(
         case.assigned_at = datetime.utcnow()
         case.updated_at = datetime.utcnow()
 
+        await redis_client.set(
+            ANALYST_LAST_ASSIGNED_KEY.format(user_id=user_id),
+            case.assigned_at.isoformat(),
+        )
+
         await db.flush()
         await db.refresh(case)
         return case
     finally:
         await release_case_lock(redis_client, case_id)
+
+
+async def transfer_case(
+    db: AsyncSession,
+    case_id: int,
+    current_user_id: str,
+    request: CaseTransferRequest,
+) -> Optional[FraudCase]:
+    case = await get_case_by_id(db, case_id)
+    if case is None:
+        return None
+    if case.status != CaseStatus.INVESTIGATING:
+        return None
+    if case.assigned_to != current_user_id:
+        return None
+
+    original_owner_name = case.assigned_to_name or "未知"
+    case.assigned_to = request.target_user_id
+    case.assigned_to_name = request.target_user_name
+    case.assigned_at = datetime.utcnow()
+    case.updated_at = datetime.utcnow()
+
+    note = CaseNote(
+        case_id=case_id,
+        content=f"[系统] {original_owner_name}将案件转派给{request.target_user_name},原因:{request.reason}",
+        operator="系统",
+        operator_id=None,
+    )
+    db.add(note)
+
+    await db.flush()
+    await db.refresh(case)
+    return case
 
 
 async def close_case(
@@ -213,6 +353,7 @@ async def close_case(
     case.conclusion_note = request.conclusion_note
     case.closed_at = datetime.utcnow()
     case.updated_at = datetime.utcnow()
+    case.is_overtime = False
 
     await db.flush()
     await db.refresh(case)
@@ -278,12 +419,93 @@ async def get_case_stats(db: AsyncSession) -> CaseStatsResponse:
 
     avg_hours = round(total_hours / len(closed_cases), 1) if closed_cases else 0.0
 
+    all_open_cases_stmt = select(FraudCase).where(FraudCase.status != CaseStatus.CLOSED)
+    all_open_result = await db.execute(all_open_cases_stmt)
+    all_open_cases = list(all_open_result.scalars().all())
+    overtime_count = sum(1 for c in all_open_cases if is_case_overtime(c))
+
     return CaseStatsResponse(
         pending_count=pending_count,
         investigating_count=investigating_count,
         today_closed_count=today_closed_count,
         avg_processing_hours=avg_hours,
+        overtime_count=overtime_count,
     )
+
+
+async def get_related_cases(
+    db: AsyncSession, card_hash: str, exclude_case_id: int, limit: int = 20
+) -> list[CaseRelatedCase]:
+    stmt = (
+        select(FraudCase)
+        .join(Transaction, FraudCase.transaction_id == Transaction.id)
+        .where(
+            and_(
+                Transaction.card_hash == card_hash,
+                FraudCase.id != exclude_case_id,
+            )
+        )
+        .order_by(FraudCase.created_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    cases = list(result.scalars().all())
+
+    return [
+        CaseRelatedCase(
+            id=c.id,
+            case_no=c.case_no,
+            risk_level=c.risk_level,
+            status=c.status,
+            created_at=c.created_at,
+            conclusion=c.conclusion,
+        )
+        for c in cases
+    ]
+
+
+async def count_fraud_history(
+    db: AsyncSession, card_hash: str, exclude_case_id: int
+) -> int:
+    stmt = select(func.count(FraudCase.id)).where(
+        and_(
+            FraudCase.id != exclude_case_id,
+            FraudCase.status == CaseStatus.CLOSED,
+            FraudCase.conclusion == CaseConclusion.FRAUD,
+            FraudCase.transaction_id.in_(
+                select(Transaction.id).where(Transaction.card_hash == card_hash)
+            ),
+        )
+    )
+    result = await db.execute(stmt)
+    return int(result.scalar_one())
+
+
+async def check_and_mark_overtime(
+    db: AsyncSession,
+) -> list[FraudCase]:
+    stmt = select(FraudCase).where(
+        and_(
+            FraudCase.status != CaseStatus.CLOSED,
+            FraudCase.is_overtime == False,
+        )
+    )
+    result = await db.execute(stmt)
+    cases = list(result.scalars().all())
+
+    newly_overtime: list[FraudCase] = []
+    for case in cases:
+        if is_case_overtime(case):
+            case.is_overtime = True
+            case.updated_at = datetime.utcnow()
+            newly_overtime.append(case)
+
+    if newly_overtime:
+        await db.flush()
+        for c in newly_overtime:
+            await db.refresh(c)
+
+    return newly_overtime
 
 
 async def get_user_history_transactions(
@@ -330,7 +552,12 @@ async def get_user_history_transactions(
     return history
 
 
-def build_case_response(case: FraudCase, history_txns: Optional[list[CaseHistoryTxn]] = None) -> CaseResponse:
+def build_case_response(
+    case: FraudCase,
+    history_txns: Optional[list[CaseHistoryTxn]] = None,
+    related_cases: Optional[list[CaseRelatedCase]] = None,
+    fraud_history_count: int = 0,
+) -> CaseResponse:
     txn_info = CaseTransactionInfo(
         id=case.transaction.id,
         transaction_no=case.transaction.transaction_no,
@@ -380,4 +607,7 @@ def build_case_response(case: FraudCase, history_txns: Optional[list[CaseHistory
         rule_hits=rule_hits,
         notes=notes,
         history_transactions=history_txns or [],
+        is_overtime=case.is_overtime or is_case_overtime(case),
+        related_cases=related_cases or [],
+        fraud_history_count=fraud_history_count,
     )

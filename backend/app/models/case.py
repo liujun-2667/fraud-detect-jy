@@ -80,6 +80,8 @@ class FraudCase(Base):
     )
     rule_hits: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
 
+    is_overtime: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True
     )

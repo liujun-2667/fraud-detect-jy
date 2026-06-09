@@ -13,8 +13,11 @@ import Alerts from './pages/Alerts';
 import Sandbox from './pages/Sandbox';
 import CasesList from './pages/Cases';
 import CaseDetail from './pages/Cases/CaseDetail';
+import { useWebSocket } from './hooks/useWebSocket';
 
 const App: React.FC = () => {
+  useWebSocket();
+
   return (
     <ConfigProvider locale={zhCN}>
       <AntdApp>

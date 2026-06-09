@@ -25,6 +25,7 @@ import {
   FileSearchOutlined,
   UserOutlined,
   ClockCircleOutlined,
+  AlertOutlined,
 } from '@ant-design/icons';
 import { Line, Column, Heatmap, Pie } from '@ant-design/charts';
 import dayjs from 'dayjs';
@@ -401,7 +402,7 @@ const Dashboard: React.FC = () => {
         }
       >
         <Row gutter={16}>
-          <Col span={6}>
+          <Col span={4}>
             <Card>
               <Statistic
                 title="待分配案件"
@@ -411,13 +412,23 @@ const Dashboard: React.FC = () => {
               />
             </Card>
           </Col>
-          <Col span={6}>
+          <Col span={4}>
             <Card>
               <Statistic
                 title="调查中案件"
                 value={caseStats?.investigating_count || 0}
                 prefix={<UserOutlined />}
                 valueStyle={{ color: '#1677ff' }}
+              />
+            </Card>
+          </Col>
+          <Col span={4}>
+            <Card>
+              <Statistic
+                title="超时未结案件"
+                value={caseStats?.overtime_count || 0}
+                prefix={<AlertOutlined />}
+                valueStyle={{ color: '#ff4d4f', fontWeight: 600 }}
               />
             </Card>
           </Col>

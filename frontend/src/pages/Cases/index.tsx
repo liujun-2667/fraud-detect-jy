@@ -17,10 +17,11 @@ import {
   UserOutlined,
   EyeOutlined,
   ReloadOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
-import { useCaseStore } from '../../store/useCaseStore';
+import { useCaseStore, requestNotificationPermission } from '../../store/useCaseStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import {
   Case,
@@ -35,7 +36,7 @@ const { RangePicker } = DatePicker;
 const CasesList: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { getCaseList, assignCase } = useCaseStore();
+  const { getCaseList, autoAssignCase } = useCaseStore();
 
   const [loading, setLoading] = useState(false);
   const [cases, setCases] = useState<Case[]>([]);
@@ -48,6 +49,10 @@ const CasesList: React.FC = () => {
   const [assignedToFilter, setAssignedToFilter] = useState<string | undefined>();
   const [timeRange, setTimeRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const [caseNoSearch, setCaseNoSearch] = useState('');
+
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
 
   const loadCases = async () => {
     setLoading(true);
@@ -95,17 +100,13 @@ const CasesList: React.FC = () => {
     setTimeout(loadCases, 0);
   };
 
-  const handleAssign = async (record: Case) => {
-    if (!user) {
-      message.error('用户未登录');
-      return;
-    }
-    const result = await assignCase(record.id, user.id, user.name);
+  const handleAutoAssign = async (record: Case) => {
+    const result = await autoAssignCase(record.id);
     if (result) {
-      message.success('案件认领成功');
+      message.success(`案件已自动分配给 ${result.assigned_to_name}`);
       loadCases();
     } else {
-      message.error('案件认领失败，该案件可能已被认领');
+      message.error('案件分配失败');
     }
   };
 
@@ -192,9 +193,26 @@ const CasesList: React.FC = () => {
       title: '当前状态',
       dataIndex: 'status',
       key: 'status',
-      width: 120,
-      render: (val: CaseStatus) => (
-        <Tag color={getStatusColor(val)}>{getStatusText(val)}</Tag>
+      width: 200,
+      render: (val: CaseStatus, record: Case) => (
+        <Space>
+          <Tag color={getStatusColor(val)}>{getStatusText(val)}</Tag>
+          {record.is_overtime && (
+            <Tag
+              color="red"
+              icon={<WarningOutlined />}
+              style={{
+                animation: 'blink 1s infinite',
+                fontWeight: 600,
+              }}
+            >
+              超时
+            </Tag>
+          )}
+          {val === 'pending' && record.assigned_to_name && (
+            <Tag color="blue">已自动分配</Tag>
+          )}
+        </Space>
       ),
     },
     {
@@ -222,7 +240,7 @@ const CasesList: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 240,
       fixed: 'right' as const,
       render: (_: unknown, record: Case) => (
         <Space>
@@ -236,9 +254,9 @@ const CasesList: React.FC = () => {
             </Button>
           </Tooltip>
           {record.status === 'pending' && (
-            <Tooltip title="认领此案件">
-              <Button type="primary" size="small" onClick={() => handleAssign(record)}>
-                认领
+            <Tooltip title="系统自动分配">
+              <Button type="primary" size="small" onClick={() => handleAutoAssign(record)}>
+                自动分配
               </Button>
             </Tooltip>
           )}
@@ -248,86 +266,107 @@ const CasesList: React.FC = () => {
   ];
 
   return (
-    <Card
-      title="案件调查工作台"
-      extra={
-        <Button icon={<ReloadOutlined />} onClick={loadCases}>
-          刷新
-        </Button>
-      }
-    >
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Input
-          placeholder="案件编号"
-          prefix={<SearchOutlined />}
-          style={{ width: 220 }}
-          allowClear
-          value={caseNoSearch}
-          onChange={(e) => setCaseNoSearch(e.target.value)}
-        />
-        <Select
-          placeholder="案件状态"
-          allowClear
-          style={{ width: 140 }}
-          value={statusFilter}
-          onChange={(v) => setStatusFilter(v)}
-        >
-          <Option value="pending">待分配</Option>
-          <Option value="investigating">调查中</Option>
-          <Option value="closed">已结案</Option>
-        </Select>
-        <Select
-          placeholder="风险等级"
-          allowClear
-          style={{ width: 140 }}
-          value={riskLevelFilter}
-          onChange={(v) => setRiskLevelFilter(v)}
-        >
-          <Option value="high">高风险</Option>
-          <Option value="medium">中风险</Option>
-          <Option value="low">低风险</Option>
-        </Select>
-        <Select
-          placeholder="认领人"
-          allowClear
-          style={{ width: 140 }}
-          value={assignedToFilter}
-          onChange={(v) => setAssignedToFilter(v)}
-        >
-          <Option value="user_1">张伟</Option>
-          <Option value="user_2">李娜</Option>
-          <Option value="user_3">王芳</Option>
-          <Option value="user_4">刘洋</Option>
-          <Option value="user_5">陈静</Option>
-        </Select>
-        <RangePicker
-          showTime
-          value={timeRange}
-          onChange={(v) => setTimeRange(v as [dayjs.Dayjs, dayjs.Dayjs] | null)}
-        />
-        <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
-          查询
-        </Button>
-        <Button onClick={handleReset}>重置</Button>
-      </Space>
+    <>
+      <style>
+        {`
+          @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+          }
+        `}
+      </style>
+      <Card
+        title="案件调查工作台"
+        extra={
+          <Button icon={<ReloadOutlined />} onClick={loadCases}>
+            刷新
+          </Button>
+        }
+      >
+        <Space style={{ marginBottom: 16 }} wrap>
+          <Input
+            placeholder="案件编号"
+            prefix={<SearchOutlined />}
+            style={{ width: 220 }}
+            allowClear
+            value={caseNoSearch}
+            onChange={(e) => setCaseNoSearch(e.target.value)}
+          />
+          <Select
+            placeholder="案件状态"
+            allowClear
+            style={{ width: 140 }}
+            value={statusFilter}
+            onChange={(v) => setStatusFilter(v)}
+          >
+            <Option value="pending">待分配</Option>
+            <Option value="investigating">调查中</Option>
+            <Option value="closed">已结案</Option>
+          </Select>
+          <Select
+            placeholder="风险等级"
+            allowClear
+            style={{ width: 140 }}
+            value={riskLevelFilter}
+            onChange={(v) => setRiskLevelFilter(v)}
+          >
+            <Option value="high">高风险</Option>
+            <Option value="medium">中风险</Option>
+            <Option value="low">低风险</Option>
+          </Select>
+          <Select
+            placeholder="认领人"
+            allowClear
+            style={{ width: 140 }}
+            value={assignedToFilter}
+            onChange={(v) => setAssignedToFilter(v)}
+          >
+            <Option value="user_1">张伟</Option>
+            <Option value="user_2">李娜</Option>
+            <Option value="user_3">王芳</Option>
+            <Option value="user_4">刘洋</Option>
+            <Option value="user_5">陈静</Option>
+          </Select>
+          <RangePicker
+            showTime
+            value={timeRange}
+            onChange={(v) => setTimeRange(v as [dayjs.Dayjs, dayjs.Dayjs] | null)}
+          />
+          <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
+            查询
+          </Button>
+          <Button onClick={handleReset}>重置</Button>
+        </Space>
 
-      <Table
-        loading={loading}
-        dataSource={cases}
-        columns={columns}
-        rowKey="id"
-        scroll={{ x: 1200 }}
-        pagination={{
-          current: page,
-          pageSize,
-          total,
-          showSizeChanger: false,
-          showQuickJumper: true,
-          showTotal: (t) => `共 ${t} 条`,
-          onChange: (p) => setPage(p),
-        }}
-      />
-    </Card>
+        <Table
+          loading={loading}
+          dataSource={cases}
+          columns={columns}
+          rowKey="id"
+          scroll={{ x: 1400 }}
+          rowClassName={(record) => (record.is_overtime ? 'overtime-row' : '')}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: false,
+            showQuickJumper: true,
+            showTotal: (t) => `共 ${t} 条`,
+            onChange: (p) => setPage(p),
+          }}
+        />
+      </Card>
+      <style>
+        {`
+          .overtime-row > td {
+            background-color: #fff1f0 !important;
+          }
+          .overtime-row:hover > td {
+            background-color: #ffccc7 !important;
+          }
+        `}
+      </style>
+    </>
   );
 };
 

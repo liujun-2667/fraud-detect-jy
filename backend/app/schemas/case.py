@@ -72,6 +72,12 @@ class CaseCloseRequest(BaseModel):
     conclusion_note: str = Field(..., min_length=20, max_length=2000)
 
 
+class CaseTransferRequest(BaseModel):
+    target_user_id: str = Field(..., min_length=1)
+    target_user_name: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=10, max_length=500)
+
+
 class CaseListFilter(BaseModel):
     status: Optional[CaseStatus] = None
     risk_level: Optional[CaseRiskLevel] = None
@@ -79,6 +85,22 @@ class CaseListFilter(BaseModel):
     end_time: Optional[datetime] = None
     assigned_to: Optional[str] = None
     case_no: Optional[str] = None
+
+
+class AnalystInfo(BaseModel):
+    user_id: str
+    user_name: str
+    active_cases: int = 0
+    last_assigned_at: Optional[datetime] = None
+
+
+class CaseRelatedCase(BaseModel):
+    id: int
+    case_no: str
+    risk_level: CaseRiskLevel
+    status: CaseStatus
+    created_at: datetime
+    conclusion: Optional[CaseConclusion] = None
 
 
 class CaseResponse(CaseBase):
@@ -100,6 +122,9 @@ class CaseResponse(CaseBase):
     rule_hits: list[CaseRuleHit] = Field(default_factory=list)
     notes: list[CaseNoteResponse] = Field(default_factory=list)
     history_transactions: list[CaseHistoryTxn] = Field(default_factory=list)
+    is_overtime: bool = False
+    related_cases: list[CaseRelatedCase] = Field(default_factory=list)
+    fraud_history_count: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -117,3 +142,4 @@ class CaseStatsResponse(BaseModel):
     investigating_count: int = 0
     today_closed_count: int = 0
     avg_processing_hours: float = 0.0
+    overtime_count: int = 0
