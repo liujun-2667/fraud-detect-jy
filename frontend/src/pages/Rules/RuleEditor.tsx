@@ -21,6 +21,7 @@ import {
   Tooltip,
   Typography,
   Descriptions,
+  Alert,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -29,11 +30,13 @@ import {
   PlusOutlined,
   MinusCircleOutlined,
   DeleteOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getRuleById, createRule, modifyActiveRule } from '../../api/rules';
 import { evaluateTransaction } from '../../api/transactions';
 import { Rule, RuleType, Evaluation, ThresholdRuleConfig } from '../../types';
+import TemplateSelector, { TemplateFilledData } from './TemplateSelector';
 
 const { Option } = Select;
 const { Text, Paragraph } = Typography;
@@ -82,25 +85,23 @@ const RuleEditor: React.FC = () => {
   ]);
   const [minMatchCount, setMinMatchCount] = useState<number>(2);
   const [behaviorConfig, setBehaviorConfig] = useState<any>({
-    behavior_type: 'frequency',
+    behavior_type: 'high_frequency',
     window_minutes: 60,
     threshold: 10,
-    params: {},
+    parameters: {},
   });
   const [weight, setWeight] = useState<number>(5);
-  const [priority, setPriority] = useState<number>(5);
+  const [priority, setPriority] = useState<number>(100);
   const [isImmediateBlock, setIsImmediateBlock] = useState<boolean>(false);
   const [logicTree, setLogicTree] = useState<LogicNode>({
     id: genNodeId(),
     type: 'AND',
-    children: [
-      {
-        id: genNodeId(),
-        type: 'condition',
-        condition: { field: 'amount', operator: '>', value: 1000 },
-      },
-    ],
+    children: [],
   });
+
+  const [templateSelectorOpen, setTemplateSelectorOpen] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+  const [selectedTemplateName, setSelectedTemplateName] = useState<string | null>(null);
 
   const loadRule = async () => {
     if (!id) return;
@@ -131,8 +132,31 @@ const RuleEditor: React.FC = () => {
           if (latest.config?.behavior) {
             setBehaviorConfig(latest.config.behavior);
           }
-          if (latest.logic_expression) {
-            setLogicTree(latest.logic_expression);
+          if (latest.logic_expression?.expression) {
+            const convertExpression = (expr: any): LogicNode => {
+              const node: LogicNode = {
+                id: genNodeId(),
+                type: expr.type || 'AND',
+              };
+              if (expr.type === 'condition') {
+                node.condition = {
+                  field: expr.field || 'amount',
+                  operator: expr.operator || '>',
+                  value: expr.value ?? 0,
+                };
+              } else {
+                const childrenSource = expr.children || expr.conditions || [];
+                node.children = childrenSource.length > 0
+                  ? childrenSource.map(convertExpression)
+                  : [];
+              }
+              return node;
+            };
+            setLogicTree(convertExpression(latest.logic_expression.expression));
+          }
+          if (latest.source_template_id) {
+            setSelectedTemplateId(latest.source_template_id);
+            setSelectedTemplateName(latest.source_template_name || null);
           }
         }
       } else {
@@ -165,6 +189,22 @@ const RuleEditor: React.FC = () => {
         config.behavior = behaviorConfig;
       }
 
+      const convertLogicToBackend = (node: LogicNode): any => {
+        if (node.type === 'condition') {
+          return {
+            type: 'condition',
+            field: node.condition?.field,
+            operator: node.condition?.operator,
+            value: node.condition?.value,
+          };
+        }
+        const children = node.children || [];
+        return {
+          type: node.type,
+          conditions: children.map(convertLogicToBackend),
+        };
+      };
+
       const payload = {
         name: values.name,
         description: values.description,
@@ -173,14 +213,20 @@ const RuleEditor: React.FC = () => {
         weight,
         priority,
         is_immediate_block: isImmediateBlock,
-        logic_expression: logicTree,
+        logic_expression: {
+          expression: convertLogicToBackend(logicTree),
+        },
       };
 
       let res: any;
       if (isEdit) {
         res = await modifyActiveRule(Number(id), payload);
       } else {
-        res = await createRule(payload);
+        const createPayload = {
+          ...payload,
+          template_id: selectedTemplateId || undefined,
+        };
+        res = await createRule(createPayload);
       }
 
       if (res.code === 0) {
@@ -195,6 +241,59 @@ const RuleEditor: React.FC = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSelectTemplate = (data: TemplateFilledData) => {
+    setSelectedTemplateId(data.templateId);
+    setSelectedTemplateName(data.templateName);
+
+    setRuleType(data.ruleType);
+    setWeight(data.weight);
+    setPriority(data.priority);
+    setIsImmediateBlock(data.isImmediateBlock);
+
+    if (data.logicExpression?.expression) {
+      const convertExpression = (expr: any): LogicNode => {
+        const node: LogicNode = {
+          id: genNodeId(),
+          type: expr.type || 'AND',
+        };
+        if (expr.type === 'condition') {
+          node.condition = {
+            field: expr.field || 'amount',
+            operator: expr.operator || '>',
+            value: expr.value ?? 0,
+          };
+        } else {
+          const childrenSource = expr.children || expr.conditions || [];
+          if (childrenSource && childrenSource.length > 0) {
+            node.children = childrenSource.map(convertExpression);
+          } else {
+            node.children = [];
+          }
+        }
+        return node;
+      };
+      setLogicTree(convertExpression(data.logicExpression.expression));
+    }
+
+    if (data.config.threshold) {
+      setThresholdConfig(data.config.threshold);
+    }
+    if (data.config.association) {
+      setAssociationConditions(data.config.association.conditions || []);
+      setMinMatchCount(data.config.association.min_match_count || 2);
+    }
+    if (data.config.behavior) {
+      setBehaviorConfig(data.config.behavior);
+    }
+
+    if (data.description) {
+      form.setFieldsValue({ description: data.description });
+    }
+    form.setFieldsValue({ rule_type: data.ruleType });
+
+    message.success('模板配置已填充，请在此基础上调整参数');
   };
 
   const handleTest = async () => {
@@ -460,6 +559,16 @@ const RuleEditor: React.FC = () => {
           title={isEdit ? '编辑规则' : '新建规则'}
           extra={
             <Space>
+              {!isEdit && (
+                <Button
+                  icon={<ThunderboltOutlined />}
+                  type="primary"
+                  style={{ background: '#faad14', borderColor: '#faad14' }}
+                  onClick={() => setTemplateSelectorOpen(true)}
+                >
+                  从模板创建
+                </Button>
+              )}
               <Button
                 icon={<PlayCircleOutlined />}
                 onClick={handleTest}
@@ -481,6 +590,38 @@ const RuleEditor: React.FC = () => {
             </Space>
           }
         >
+          {selectedTemplateName && (
+            <Alert
+              type="info"
+              showIcon
+              icon={<ThunderboltOutlined />}
+              message={
+                <Space>
+                  <span>已基于模板填充配置：</span>
+                  <Tag color="gold">{selectedTemplateName}</Tag>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => setTemplateSelectorOpen(true)}
+                  >
+                    更换模板
+                  </Button>
+                  <Button
+                    type="link"
+                    size="small"
+                    danger
+                    onClick={() => {
+                      setSelectedTemplateId(null);
+                      setSelectedTemplateName(null);
+                    }}
+                  >
+                    清除模板
+                  </Button>
+                </Space>
+              }
+              style={{ marginBottom: 24 }}
+            />
+          )}
           <Form form={form} layout="vertical">
             <Row gutter={24}>
               <Col span={12}>
@@ -640,10 +781,11 @@ const RuleEditor: React.FC = () => {
                       value={behaviorConfig.behavior_type}
                       onChange={(v) => setBehaviorConfig({ ...behaviorConfig, behavior_type: v })}
                     >
-                      <Option value="frequency">高频交易</Option>
-                      <Option value="location_change">位置突变</Option>
-                      <Option value="amount_spike">金额突增</Option>
-                      <Option value="velocity">速度异常</Option>
+                      <Option value="high_frequency">高频交易</Option>
+                      <Option value="geographic_jump">位置突变</Option>
+                      <Option value="amount_anomaly">金额突增</Option>
+                      <Option value="device_change">设备变更</Option>
+                      <Option value="merchant_risk">商户风险</Option>
                     </Select>
                   </Form.Item>
                 </Col>
@@ -784,6 +926,12 @@ const RuleEditor: React.FC = () => {
             </Space>
           )}
         </Modal>
+
+        <TemplateSelector
+          open={templateSelectorOpen}
+          onClose={() => setTemplateSelectorOpen(false)}
+          onSelect={handleSelectTemplate}
+        />
       </Space>
     </Spin>
   );

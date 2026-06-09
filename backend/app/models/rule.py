@@ -83,6 +83,11 @@ class RuleVersion(Base):
     reviewed_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     activated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    source_template_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("rule_templates.id", ondelete="SET NULL"), nullable=True
+    )
+    source_template_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    template_snapshot: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     rule: Mapped[Rule] = relationship("Rule", back_populates="versions")
     audit_logs: Mapped[list["AuditLog"]] = relationship(

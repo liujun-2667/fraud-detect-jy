@@ -12,6 +12,7 @@ import {
   SettingOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -28,6 +29,11 @@ const menuItems: MenuProps['items'] = [
     key: '/rules',
     icon: <ShieldOutlined />,
     label: '规则管理',
+  },
+  {
+    key: '/templates',
+    icon: <ThunderboltOutlined />,
+    label: '模板库管理',
   },
   {
     key: '/transactions',
@@ -58,6 +64,9 @@ const AppLayout: React.FC = () => {
   const getSelectedKey = (): string => {
     if (location.pathname.startsWith('/rules')) {
       return '/rules';
+    }
+    if (location.pathname.startsWith('/templates')) {
+      return '/templates';
     }
     return location.pathname;
   };

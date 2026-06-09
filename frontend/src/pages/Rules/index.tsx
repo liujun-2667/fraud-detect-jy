@@ -18,6 +18,8 @@ import {
   Row,
   Col,
   Descriptions,
+  Alert,
+  Spin,
 } from 'antd';
 import {
   PlusOutlined,
@@ -30,6 +32,8 @@ import {
   CloseCircleOutlined,
   SwapOutlined,
   SearchOutlined,
+  ThunderboltOutlined,
+  DiffOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -41,8 +45,9 @@ import {
   disableRule,
   getRuleVersions,
   compareVersions,
+  getRuleTemplateDiff,
 } from '../../api/rules';
-import { Rule, RuleType, RuleVersionStatus, RuleVersion } from '../../types';
+import { Rule, RuleType, RuleVersionStatus, RuleVersion, TemplateRuleDiff } from '../../types';
 
 const { Option } = Select;
 const { Text, Paragraph } = Typography;
@@ -73,6 +78,10 @@ const Rules: React.FC = () => {
   const [rejectRuleId, setRejectRuleId] = useState<number | null>(null);
   const [rejectVersionId, setRejectVersionId] = useState<number | null>(null);
   const [rejectForm] = Form.useForm();
+
+  const [templateDiffLoading, setTemplateDiffLoading] = useState(false);
+  const [templateDiffData, setTemplateDiffData] = useState<TemplateRuleDiff | null>(null);
+  const [templateDiffVisible, setTemplateDiffVisible] = useState(false);
 
   const loadRules = async () => {
     setLoading(true);
@@ -242,6 +251,24 @@ const Rules: React.FC = () => {
     setCurrentRule(rule);
     setVersionDrawerOpen(true);
     await loadVersions(rule.id);
+  };
+
+  const handleViewTemplateDiff = async (version: RuleVersion) => {
+    if (!version.source_template_id) return;
+    setTemplateDiffLoading(true);
+    try {
+      const res = await getRuleTemplateDiff(version.id);
+      if (res.code === 0) {
+        setTemplateDiffData(res.data);
+        setTemplateDiffVisible(true);
+      } else {
+        message.error(res.message || '获取参数差异失败');
+      }
+    } catch (e: any) {
+      message.error(e.message || '获取参数差异失败');
+    } finally {
+      setTemplateDiffLoading(false);
+    }
   };
 
   const handleCompare = async () => {
@@ -572,11 +599,16 @@ const Rules: React.FC = () => {
                       </Tag>
                     }
                     title={
-                      <Space>
+                      <Space wrap>
                         <Tag color={getStatusColor(item.status)}>{getStatusText(item.status)}</Tag>
                         <Text type="secondary">权重: {item.weight}</Text>
                         <Text type="secondary">优先级: {item.priority}</Text>
                         {item.is_immediate_block && <Tag color="red">立即拦截</Tag>}
+                        {item.source_template_name && (
+                          <Tag color="gold" icon={<ThunderboltOutlined style={{ fontSize: 10 }} />}>
+                            基于模板: {item.source_template_name}
+                          </Tag>
+                        )}
                       </Space>
                     }
                     description={
@@ -595,6 +627,15 @@ const Rules: React.FC = () => {
                     }
                   />
                   <Space>
+                    {item.source_template_id && (
+                      <Button
+                        size="small"
+                        icon={<SearchOutlined />}
+                        onClick={() => handleViewTemplateDiff(item)}
+                      >
+                        参数差异
+                      </Button>
+                    )}
                     {item.status === 'reviewing' && (
                       <>
                         <Button size="small" type="primary" onClick={() => handleApprove(currentRule, item)}>
@@ -663,6 +704,78 @@ const Rules: React.FC = () => {
             <Input.TextArea rows={4} placeholder="请输入驳回原因..." />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title={
+          <Space>
+            <DiffOutlined />
+            <span>模板参数差异对比</span>
+            {templateDiffData && <Tag color="gold">来源: {templateDiffData.template_name}</Tag>}
+          </Space>
+        }
+        open={templateDiffVisible}
+        onCancel={() => setTemplateDiffVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setTemplateDiffVisible(false)}>
+            关闭
+          </Button>,
+        ]}
+        width={900}
+      >
+        <Spin spinning={templateDiffLoading}>
+          {templateDiffData ? (
+            templateDiffData.diffs.length === 0 ? (
+              <Alert type="success" message="该规则配置与模板默认值完全一致，无差异" showIcon />
+            ) : (
+              <div>
+                <Alert
+                  type="info"
+                  message={`共发现 ${templateDiffData.diffs.length} 处参数差异`}
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                />
+                <Table
+                  size="small"
+                  dataSource={templateDiffData.diffs}
+                  rowKey="field"
+                  pagination={false}
+                  columns={[
+                    {
+                      title: '字段路径',
+                      dataIndex: 'field',
+                      key: 'field',
+                      width: 220,
+                      render: (text: string) => <code style={{ fontSize: 12 }}>{text}</code>,
+                    },
+                    {
+                      title: '模板默认值',
+                      dataIndex: 'template_value',
+                      key: 'template_value',
+                      render: (val: any) => (
+                        <Tag color="blue">
+                          {typeof val === 'object' ? JSON.stringify(val) : String(val)}
+                        </Tag>
+                      ),
+                    },
+                    {
+                      title: '规则实际值',
+                      dataIndex: 'rule_value',
+                      key: 'rule_value',
+                      render: (val: any) => (
+                        <Tag color="orange">
+                          {typeof val === 'object' ? JSON.stringify(val) : String(val)}
+                        </Tag>
+                      ),
+                    },
+                  ]}
+                />
+              </div>
+            )
+          ) : (
+            <Text type="secondary">加载中...</Text>
+          )}
+        </Spin>
       </Modal>
     </Space>
   );

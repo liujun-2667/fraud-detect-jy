@@ -67,14 +67,65 @@ def _status_str(value: Any) -> str:
 
 
 async def create_rule(db: Any, rule_data: Dict[str, Any]) -> Dict[str, Any]:
-    from sqlalchemy import text
+    from sqlalchemy import text, select
 
     name: str = str(rule_data.get("name", ""))
     description: Optional[str] = rule_data.get("description")
     rule_type: str = str(rule_data.get("rule_type", "threshold"))
     created_by: str = str(rule_data.get("created_by", "system"))
+    template_id: Optional[int] = rule_data.get("template_id")
+
+    source_template_id: Optional[int] = None
+    source_template_name: Optional[str] = None
+    template_snapshot: Optional[Dict[str, Any]] = None
 
     initial_version_data: Dict[str, Any] = rule_data.get("initial_version", {}) or {}
+
+    if not initial_version_data:
+        for key in ["config", "weight", "priority", "logic_expression", "is_immediate_block", "status"]:
+            if key in rule_data:
+                initial_version_data[key] = rule_data[key]
+
+    if template_id:
+        from app.models.template import RuleTemplate
+        tpl_result = await db.execute(
+            select(RuleTemplate).where(RuleTemplate.id == template_id)
+        )
+        template = tpl_result.scalar_one_or_none()
+        if template:
+            source_template_id = template.id
+            source_template_name = template.name
+            template_snapshot = {
+                "name": template.name,
+                "category": template.category.value if hasattr(template.category, "value") else str(template.category),
+                "rule_type": template.rule_type,
+                "config": template.config,
+                "default_weight": template.default_weight,
+                "default_priority": template.default_priority,
+                "default_is_immediate_block": template.default_is_immediate_block,
+                "default_logic_expression": template.default_logic_expression,
+                "tags": template.tags,
+            }
+
+            if not rule_data.get("rule_type") or rule_type == "threshold":
+                rule_type = template.rule_type
+
+            if "config" not in initial_version_data:
+                initial_version_data["config"] = template.config
+            if "weight" not in initial_version_data:
+                initial_version_data["weight"] = template.default_weight
+            if "priority" not in initial_version_data:
+                initial_version_data["priority"] = template.default_priority
+            if "logic_expression" not in initial_version_data:
+                initial_version_data["logic_expression"] = template.default_logic_expression
+            if "is_immediate_block" not in initial_version_data:
+                initial_version_data["is_immediate_block"] = template.default_is_immediate_block
+
+            await db.execute(
+                text("UPDATE rule_templates SET use_count = use_count + 1 WHERE id = :tid"),
+                {"tid": template.id},
+            )
+
     version_num: int = int(initial_version_data.get("version_num", 1))
     config: Dict[str, Any] = initial_version_data.get("config", {}) or {}
     weight: int = int(initial_version_data.get("weight", 5))
@@ -102,9 +153,11 @@ async def create_rule(db: Any, rule_data: Dict[str, Any]) -> Dict[str, Any]:
     version_result = await db.execute(
         text(
             "INSERT INTO rule_versions (rule_id, version_num, config, weight, priority, status, "
-            "logic_expression, is_immediate_block, created_by, created_at) "
+            "logic_expression, is_immediate_block, created_by, created_at, "
+            "source_template_id, source_template_name, template_snapshot) "
             "VALUES (:rule_id, :version_num, :config, :weight, :priority, :status, "
-            ":logic_expression, :is_immediate_block, :created_by, :created_at) RETURNING id"
+            ":logic_expression, :is_immediate_block, :created_by, :created_at, "
+            ":source_template_id, :source_template_name, :template_snapshot) RETURNING id"
         ),
         {
             "rule_id": rule_id,
@@ -117,6 +170,9 @@ async def create_rule(db: Any, rule_data: Dict[str, Any]) -> Dict[str, Any]:
             "is_immediate_block": is_immediate_block,
             "created_by": created_by,
             "created_at": now,
+            "source_template_id": source_template_id,
+            "source_template_name": source_template_name,
+            "template_snapshot": json.dumps(template_snapshot) if template_snapshot else None,
         },
     )
     rule_version_id: int = int(version_result.fetchone()[0])
@@ -131,7 +187,12 @@ async def create_rule(db: Any, rule_data: Dict[str, Any]) -> Dict[str, Any]:
         action="create",
         old_status=None,
         new_status=initial_status,
-        detail={"message": "规则创建", "rule_name": name},
+        detail={
+            "message": "规则创建",
+            "rule_name": name,
+            "source_template_id": source_template_id,
+            "source_template_name": source_template_name,
+        },
     )
     await db.commit()
 
@@ -140,6 +201,8 @@ async def create_rule(db: Any, rule_data: Dict[str, Any]) -> Dict[str, Any]:
         "rule_version_id": rule_version_id,
         "version_num": version_num,
         "status": initial_status,
+        "source_template_id": source_template_id,
+        "source_template_name": source_template_name,
     }
 
 

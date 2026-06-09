@@ -91,6 +91,9 @@ class RuleVersionResponse(RuleVersionBase):
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     activated_at: Optional[datetime] = None
+    source_template_id: Optional[int] = None
+    source_template_name: Optional[str] = None
+    template_snapshot: Optional[dict[str, Any]] = None
 
     model_config = {"from_attributes": True}
 
@@ -103,6 +106,7 @@ class RuleBase(BaseModel):
 
 class RuleCreate(RuleBase):
     initial_version: Optional[RuleVersionCreate] = None
+    template_id: Optional[int] = None
 
 
 class RuleUpdate(BaseModel):
@@ -123,3 +127,4 @@ class RuleListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+    total_pages: int

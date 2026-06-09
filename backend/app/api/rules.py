@@ -1,4 +1,5 @@
-from typing import Optional
+import json
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy import and_, func, or_, select
@@ -15,6 +16,8 @@ from app.schemas import (
     RuleListResponse,
     RuleResponse,
     RuleVersionResponse,
+    TemplateRuleDiff,
+    TemplateDiffItem,
 )
 from app.services import (
     approve_rule,
@@ -90,6 +93,9 @@ async def create_new_rule(
     payload = data.model_dump()
     payload["created_by"] = operator
     payload["ip_address"] = client_ip
+
+    if data.template_id:
+        payload["template_id"] = data.template_id
 
     created = await create_rule(db, payload)
     rule_id = created["rule_id"]
@@ -273,4 +279,95 @@ async def list_audit_logs(
         total=total,
         page=commons.page,
         page_size=commons.page_size,
+    )
+
+
+def _json_diff(obj1: Any, obj2: Any, path: str = "") -> list[TemplateDiffItem]:
+    diffs: list[TemplateDiffItem] = []
+    if isinstance(obj1, dict) and isinstance(obj2, dict):
+        all_keys = set(obj1.keys()) | set(obj2.keys())
+        for key in sorted(all_keys):
+            sub_path = f"{path}.{key}" if path else key
+            if key not in obj1:
+                diffs.append(TemplateDiffItem(
+                    field=sub_path,
+                    template_value=None,
+                    rule_value=obj2[key],
+                ))
+            elif key not in obj2:
+                diffs.append(TemplateDiffItem(
+                    field=sub_path,
+                    template_value=obj1[key],
+                    rule_value=None,
+                ))
+            else:
+                sub_diffs = _json_diff(obj1[key], obj2[key], sub_path)
+                diffs.extend(sub_diffs)
+    elif isinstance(obj1, list) and isinstance(obj2, list):
+        if obj1 != obj2:
+            diffs.append(TemplateDiffItem(
+                field=path,
+                template_value=obj1,
+                rule_value=obj2,
+            ))
+    else:
+        if obj1 != obj2:
+            diffs.append(TemplateDiffItem(
+                field=path,
+                template_value=obj1,
+                rule_value=obj2,
+            ))
+    return diffs
+
+
+@router.get("/versions/{version_id}/template-diff", response_model=TemplateRuleDiff)
+async def get_rule_template_diff(
+    version_id: int,
+    db: AsyncSession = Depends(get_db_session),
+    redis_client: redis.Redis = Depends(get_redis_client),
+):
+    stmt = select(RuleVersion).where(RuleVersion.id == version_id)
+    result = await db.execute(stmt)
+    version = result.scalar_one_or_none()
+    if version is None:
+        raise HTTPException(status_code=404, detail="规则版本不存在")
+
+    if version.source_template_id is None:
+        raise HTTPException(status_code=400, detail="该版本不是基于模板创建的")
+
+    template_snapshot = version.template_snapshot
+    if template_snapshot is None:
+        raise HTTPException(status_code=400, detail="模板快照数据丢失")
+
+    if isinstance(template_snapshot, str):
+        template_snapshot = json.loads(template_snapshot)
+
+    version_config_raw = version.config
+    if isinstance(version_config_raw, str):
+        version_config = json.loads(version_config_raw)
+    else:
+        version_config = version_config_raw or {}
+
+    template_defaults = {
+        "config": template_snapshot.get("config", {}),
+        "weight": template_snapshot.get("default_weight"),
+        "priority": template_snapshot.get("default_priority"),
+        "is_immediate_block": template_snapshot.get("default_is_immediate_block"),
+        "logic_expression": template_snapshot.get("default_logic_expression", {}),
+    }
+
+    rule_values = {
+        "config": version_config,
+        "weight": version.weight,
+        "priority": version.priority,
+        "is_immediate_block": version.is_immediate_block,
+        "logic_expression": version.logic_expression or {},
+    }
+
+    diffs = _json_diff(template_defaults, rule_values)
+
+    return TemplateRuleDiff(
+        template_id=version.source_template_id,
+        template_name=version.source_template_name or "",
+        diffs=diffs,
     )

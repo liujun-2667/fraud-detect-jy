@@ -13,6 +13,8 @@ import {
   Tag,
   message,
   Drawer,
+  Empty,
+  List,
 } from 'antd';
 import {
   DashboardOutlined,
@@ -21,7 +23,7 @@ import {
   CheckCircleOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
-import { Line, Column, Heatmap } from '@ant-design/charts';
+import { Line, Column, Heatmap, Pie } from '@ant-design/charts';
 import dayjs from 'dayjs';
 import {
   getDashboardOverview,
@@ -33,12 +35,14 @@ import {
   getAlertStats,
   getRuleTransactions,
 } from '../../api/dashboard';
+import { getTemplateUsageDistribution } from '../../api/templates';
 import {
   DashboardOverview as DashboardOverviewType,
   TrendPoint,
   RuleHitStat,
   HeatmapPoint,
   Transaction,
+  TemplateUsageStat,
 } from '../../types';
 
 const Dashboard: React.FC = () => {
@@ -57,6 +61,8 @@ const Dashboard: React.FC = () => {
   const [amountRangeData, setAmountRangeData] = useState<HeatmapPoint[]>([]);
   const [alertLoading, setAlertLoading] = useState(false);
   const [alertData, setAlertData] = useState<any>(null);
+  const [templateUsageLoading, setTemplateUsageLoading] = useState(false);
+  const [templateUsageData, setTemplateUsageData] = useState<TemplateUsageStat[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [ruleTransactionsDrawer, setRuleTransactionsDrawer] = useState(false);
   const [selectedRule, setSelectedRule] = useState<RuleHitStat | null>(null);
@@ -130,6 +136,20 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const loadTemplateUsage = async () => {
+    setTemplateUsageLoading(true);
+    try {
+      const res = await getTemplateUsageDistribution();
+      if (res.code === 0) {
+        setTemplateUsageData(res.data || []);
+      }
+    } catch (e: any) {
+      // silent
+    } finally {
+      setTemplateUsageLoading(false);
+    }
+  };
+
   const loadAlertStats = async () => {
     setAlertLoading(true);
     try {
@@ -164,6 +184,7 @@ const Dashboard: React.FC = () => {
     loadRuleHitStats();
     loadHeatmaps();
     loadAlertStats();
+    loadTemplateUsage();
   };
 
   useEffect(() => {
@@ -479,6 +500,69 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
       </Row>
+
+      <Card title="模板使用分布">
+        <Spin spinning={templateUsageLoading}>
+          {templateUsageData.length === 0 ? (
+            <Empty description="暂无模板使用数据" style={{ padding: 40 }} />
+          ) : (
+            <Row gutter={16} align="middle">
+              <Col span={14}>
+                <Pie
+                  data={templateUsageData.map((item) => ({
+                    type: item.template_name,
+                    value: item.use_count,
+                  }))}
+                  angleField="value"
+                  colorField="type"
+                  radius={0.9}
+                  height={320}
+                  label={{
+                    text: 'type',
+                    style: { fontSize: 11 },
+                  }}
+                  legend={{ position: 'right' }}
+                  tooltip={{
+                    formatter: (datum: any) => {
+                      const stat = templateUsageData.find(
+                        (s) => s.template_name === datum.type,
+                      );
+                      return {
+                        name: datum.type,
+                        value: `${datum.value} 次 (${stat?.percentage || 0}%)`,
+                      };
+                    },
+                  }}
+                />
+              </Col>
+              <Col span={10}>
+                <List
+                  size="small"
+                  header={<div style={{ fontWeight: 500 }}>使用排行</div>}
+                  bordered
+                  dataSource={templateUsageData}
+                  renderItem={(item, idx) => (
+                    <List.Item>
+                      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+                        <Space>
+                          <Tag color={idx === 0 ? 'red' : idx === 1 ? 'orange' : idx === 2 ? 'gold' : 'blue'}>
+                            #{idx + 1}
+                          </Tag>
+                          <span>{item.template_name}</span>
+                        </Space>
+                        <Space>
+                          <Tag color="red">{item.use_count} 次</Tag>
+                          <Tag color="cyan">{item.percentage}%</Tag>
+                        </Space>
+                      </Space>
+                    </List.Item>
+                  )}
+                />
+              </Col>
+            </Row>
+          )}
+        </Spin>
+      </Card>
 
       <Card title="告警统计与处理率">
         <Spin spinning={alertLoading}>

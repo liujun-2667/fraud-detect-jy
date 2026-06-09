@@ -7,6 +7,7 @@ import AppLayout from './components/Layout/AppLayout';
 import Dashboard from './pages/Dashboard';
 import Rules from './pages/Rules';
 import RuleEditor from './pages/Rules/RuleEditor';
+import Templates from './pages/Templates';
 import Transactions from './pages/Transactions';
 import Alerts from './pages/Alerts';
 import Sandbox from './pages/Sandbox';
@@ -22,6 +23,7 @@ const App: React.FC = () => {
             <Route path="rules" element={<Rules />} />
             <Route path="rules/new" element={<RuleEditor />} />
             <Route path="rules/:id/edit" element={<RuleEditor />} />
+            <Route path="templates" element={<Templates />} />
             <Route path="transactions" element={<Transactions />} />
             <Route path="alerts" element={<Alerts />} />
             <Route path="sandbox" element={<Sandbox />} />

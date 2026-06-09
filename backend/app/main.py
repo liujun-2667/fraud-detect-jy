@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.middleware import UnifiedResponseMiddleware
 from app.redis_client import close_redis, get_redis_client
 
 
@@ -21,6 +22,7 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+app.add_middleware(UnifiedResponseMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -43,9 +45,11 @@ async def health_check() -> dict[str, str]:
 from app.api.dashboard import router as dashboard_router
 from app.api.rules import router as rules_router
 from app.api.sandbox import router as sandbox_router
+from app.api.templates import router as templates_router
 from app.api.transactions import router as transactions_router
 
 app.include_router(rules_router, prefix=settings.API_V1_PREFIX)
 app.include_router(transactions_router, prefix=settings.API_V1_PREFIX)
 app.include_router(dashboard_router, prefix=settings.API_V1_PREFIX)
 app.include_router(sandbox_router, prefix=settings.API_V1_PREFIX)
+app.include_router(templates_router, prefix=settings.API_V1_PREFIX)

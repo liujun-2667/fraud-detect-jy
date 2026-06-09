@@ -1,5 +1,13 @@
 import { apiGet, apiPost, apiPut, ApiResponse } from './client';
-import { Rule, RuleType, RuleVersionStatus, PaginatedResponse, RuleVersion, AuditLog } from '../types';
+import {
+  Rule,
+  RuleType,
+  RuleVersionStatus,
+  PaginatedResponse,
+  RuleVersion,
+  AuditLog,
+  TemplateRuleDiff,
+} from '../types';
 
 export const getRules = (
   params?: { page?: number; page_size?: number; rule_type?: RuleType; status?: RuleVersionStatus; keyword?: string },
@@ -49,4 +57,8 @@ export const compareVersions = (v1: number, v2: number): Promise<ApiResponse<any
 
 export const getAuditLogs = (params?: any): Promise<ApiResponse<PaginatedResponse<AuditLog>>> => {
   return apiGet('/rules/audit-logs', { params });
+};
+
+export const getRuleTemplateDiff = (versionId: number): Promise<ApiResponse<TemplateRuleDiff>> => {
+  return apiGet(`/rules/versions/${versionId}/template-diff`);
 };

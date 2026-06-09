@@ -33,6 +33,17 @@ from app.schemas.rule import (
     RuleVersionUpdate,
     ThresholdRuleConfig,
 )
+from app.schemas.template import (
+    RuleTemplateBase,
+    RuleTemplateCreate,
+    RuleTemplateListResponse,
+    RuleTemplateResponse,
+    RuleTemplateUpdate,
+    TemplateCategory,
+    TemplateDiffItem,
+    TemplateRuleDiff,
+    TemplateUsageStat,
+)
 from app.schemas.transaction import (
     EvaluateTransactionRequest,
     TransactionBase,
@@ -78,4 +89,13 @@ __all__ = [
     "AuditLogCreate",
     "AuditLogResponse",
     "AuditLogListResponse",
+    "RuleTemplateBase",
+    "RuleTemplateCreate",
+    "RuleTemplateUpdate",
+    "RuleTemplateResponse",
+    "RuleTemplateListResponse",
+    "TemplateCategory",
+    "TemplateDiffItem",
+    "TemplateRuleDiff",
+    "TemplateUsageStat",
 ]
