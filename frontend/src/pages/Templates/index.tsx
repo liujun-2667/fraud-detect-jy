@@ -14,7 +14,6 @@ import {
   message,
   Row,
   Col,
-  Descriptions,
   Typography,
   Divider,
   Popconfirm,
@@ -33,7 +32,6 @@ import {
   InfoCircleOutlined,
   MinusCircleOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import {
   getTemplates,
@@ -45,7 +43,7 @@ import {
 import { RuleTemplate, TemplateCategory, RuleType, ThresholdRuleConfig } from '../../types';
 
 const { Option } = Select;
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 const { TextArea } = Input;
 
 const categoryMap: Record<TemplateCategory, { label: string; color: string }> = {
@@ -70,7 +68,6 @@ interface AssociationCondition {
 }
 
 const Templates: React.FC = () => {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [templates, setTemplates] = useState<RuleTemplate[]>([]);
   const [total, setTotal] = useState(0);
