@@ -10,7 +10,6 @@ import {
   Modal,
   Drawer,
   Form,
-  Input as AntInput,
   message,
   Dropdown,
   Divider,
@@ -288,7 +287,7 @@ const Rules: React.FC = () => {
       title: '最新版本',
       key: 'latest_version',
       width: 120,
-      render: (_: any, record: Rule) => {
+      render: (_value: any, record: Rule) => {
         const latest = getLatestVersion(record);
         return latest ? `v${latest.version_num}` : '-';
       },
@@ -297,7 +296,7 @@ const Rules: React.FC = () => {
       title: '状态',
       key: 'status',
       width: 100,
-      render: (_: any, record: Rule) => {
+      render: (_value: any, record: Rule) => {
         const latest = getLatestVersion(record);
         return latest ? (
           <Tag color={getStatusColor(latest.status)} icon={getStatusIcon(latest.status)}>
@@ -312,7 +311,7 @@ const Rules: React.FC = () => {
       title: '权重',
       key: 'weight',
       width: 80,
-      render: (_: any, record: Rule) => {
+      render: (_value: any, record: Rule) => {
         const latest = getLatestVersion(record);
         return latest ? latest.weight : '-';
       },
@@ -321,7 +320,7 @@ const Rules: React.FC = () => {
       title: '优先级',
       key: 'priority',
       width: 80,
-      render: (_: any, record: Rule) => {
+      render: (_value: any, record: Rule) => {
         const latest = getLatestVersion(record);
         return latest ? latest.priority : '-';
       },
@@ -337,7 +336,7 @@ const Rules: React.FC = () => {
       title: '操作',
       key: 'action',
       width: 320,
-      render: (_: any, record: Rule) => {
+      render: (_value: any, record: Rule) => {
         const latest = getLatestVersion(record);
         const canSubmit = latest?.status === 'draft';
         const canApprove = latest?.status === 'reviewing';
@@ -661,7 +660,7 @@ const Rules: React.FC = () => {
             name="reason"
             rules={[{ required: true, message: '请输入驳回原因' }]}
           >
-            <AntInput.TextArea rows={4} placeholder="请输入驳回原因..." />
+            <Input.TextArea rows={4} placeholder="请输入驳回原因..." />
           </Form.Item>
         </Form>
       </Modal>

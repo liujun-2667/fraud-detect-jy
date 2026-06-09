@@ -1,13 +1,17 @@
 FROM node:18-alpine AS builder
 
+RUN apk add --no-cache libc6-compat
+
 WORKDIR /app
+
+ENV NODE_OPTIONS=--max-old-space-size=4096
+ENV GENERATE_SOURCEMAP=false
 
 COPY package*.json ./
 COPY .npmrc ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 COPY . .
-ENV NODE_OPTIONS=--max-old-space-size=1024
 RUN npm run build
 
 FROM nginx:alpine

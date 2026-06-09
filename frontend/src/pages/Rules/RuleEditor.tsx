@@ -259,7 +259,7 @@ const RuleEditor: React.FC = () => {
 
   const removeAssociationCondition = (index: number) => {
     if (associationConditions.length > 1) {
-      setAssociationConditions(associationConditions.filter((_, i) => i !== index));
+      setAssociationConditions(associationConditions.filter((_item, i) => i !== index));
     }
   };
 

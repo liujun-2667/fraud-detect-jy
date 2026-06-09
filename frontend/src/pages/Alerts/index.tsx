@@ -239,7 +239,7 @@ const Alerts: React.FC = () => {
       title: '命中规则数',
       key: 'hit_count',
       width: 110,
-      render: (_: any, record: Transaction) => {
+      render: (_value: any, record: Transaction) => {
         const count = record.evaluation?.rule_hits?.filter((h) => h.is_hit).length || 0;
         return count > 0 ? <Tag color="red">{count} 条</Tag> : '0 条';
       },
@@ -249,14 +249,14 @@ const Alerts: React.FC = () => {
       dataIndex: ['evaluation', 'created_at'],
       key: 'created_at',
       width: 170,
-      render: (val?: string) => (val ? dayjs(val).format('YYYY-MM-DD HH:mm:ss') : '-'),
+      render: (val: string | undefined) => (val ? dayjs(val).format('YYYY-MM-DD HH:mm:ss') : '-'),
     },
     {
       title: '操作',
       key: 'action',
       width: 200,
       fixed: 'right' as const,
-      render: (_: any, record: Transaction) => (
+      render: (_value: any, record: Transaction) => (
         <Space>
           <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => handleApprove(record)}>
             通过

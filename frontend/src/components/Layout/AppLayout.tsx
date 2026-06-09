@@ -3,10 +3,10 @@ import { Layout, Menu, Avatar, Dropdown, theme } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
-  SafetyOutlined,
-  TransactionOutlined,
+  ShieldOutlined,
+  SwapOutlined,
   BellOutlined,
-  ExperimentOutlined,
+  BulbOutlined,
   UserOutlined,
   LogoutOutlined,
   SettingOutlined,
@@ -26,12 +26,12 @@ const menuItems: MenuProps['items'] = [
   },
   {
     key: '/rules',
-    icon: <SafetyOutlined />,
+    icon: <ShieldOutlined />,
     label: '规则管理',
   },
   {
     key: '/transactions',
-    icon: <TransactionOutlined />,
+    icon: <SwapOutlined />,
     label: '交易查询',
   },
   {
@@ -41,7 +41,7 @@ const menuItems: MenuProps['items'] = [
   },
   {
     key: '/sandbox',
-    icon: <ExperimentOutlined />,
+    icon: <BulbOutlined />,
     label: '沙盒测试',
   },
 ];
