@@ -25,7 +25,6 @@ import {
   FileSearchOutlined,
   UserOutlined,
   ClockCircleOutlined,
-  RiseOutlined,
 } from '@ant-design/icons';
 import { Line, Column, Heatmap, Pie } from '@ant-design/charts';
 import dayjs from 'dayjs';
@@ -96,9 +95,9 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const loadCaseStats = () => {
+  const loadCaseStats = async () => {
     try {
-      const stats = getCaseStatsData();
+      const stats = await getCaseStatsData();
       setCaseStats(stats);
     } catch (e: any) {
       // silent

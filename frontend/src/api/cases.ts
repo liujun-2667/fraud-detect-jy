@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, ApiResponse } from './client';
+import { apiGet, apiPost, ApiResponse } from './client';
 import {
   Case,
   CaseStats,

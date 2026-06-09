@@ -11,6 +11,7 @@ import {
   Input,
   Tooltip,
 } from 'antd';
+import type { TableProps } from 'antd';
 import {
   SearchOutlined,
   UserOutlined,
@@ -99,7 +100,7 @@ const CasesList: React.FC = () => {
       message.error('用户未登录');
       return;
     }
-    const result = assignCase(record.id, user.id, user.name);
+    const result = await assignCase(record.id, user.id, user.name);
     if (result) {
       message.success('案件认领成功');
       loadCases();
@@ -144,7 +145,7 @@ const CasesList: React.FC = () => {
     return map[level];
   };
 
-  const columns = [
+  const columns: TableProps<Case>['columns'] = [
     {
       title: '案件编号',
       dataIndex: 'case_no',
@@ -222,8 +223,8 @@ const CasesList: React.FC = () => {
       title: '操作',
       key: 'action',
       width: 200,
-      fixed: 'right',
-      render: (_: any, record: Case) => (
+      fixed: 'right' as const,
+      render: (_: unknown, record: Case) => (
         <Space>
           <Tooltip title="查看详情">
             <Button

@@ -35,6 +35,7 @@ import dayjs from 'dayjs';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useCaseStore } from '../../store/useCaseStore';
 import { useAuthStore } from '../../store/useAuthStore';
+import { getCaseById } from '../../api/cases';
 import {
   Case,
   CaseStatus,
@@ -45,7 +46,7 @@ import {
 } from '../../types';
 
 const { Option } = Select;
-const { Text, Title, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
 const CaseDetail: React.FC = () => {
@@ -61,12 +62,22 @@ const CaseDetail: React.FC = () => {
   const [closeForm] = Form.useForm();
   const [closeSubmitting, setCloseSubmitting] = useState(false);
 
-  const loadCase = () => {
+  const loadCase = async () => {
     if (!id) return;
     setLoading(true);
     try {
-      const c = getCase(Number(id));
-      setCaseData(c || null);
+      try {
+        const res = await getCaseById(Number(id));
+        if (res.code === 0 && res.data) {
+          setCaseData(res.data);
+        } else {
+          const c = getCase(Number(id));
+          setCaseData(c || null);
+        }
+      } catch {
+        const c = getCase(Number(id));
+        setCaseData(c || null);
+      }
     } catch (e: any) {
       message.error(e.message || '获取案件详情失败');
     } finally {
@@ -78,9 +89,9 @@ const CaseDetail: React.FC = () => {
     loadCase();
   }, [id]);
 
-  const handleAssign = () => {
+  const handleAssign = async () => {
     if (!id || !user || !caseData) return;
-    const result = assignCase(Number(id), user.id, user.name);
+    const result = await assignCase(Number(id), user.id, user.name);
     if (result) {
       message.success('案件认领成功');
       setCaseData(result);
@@ -96,7 +107,7 @@ const CaseDetail: React.FC = () => {
     }
     setNoteSubmitting(true);
     try {
-      const result = addNote(Number(id), noteContent.trim(), user.name);
+      const result = await addNote(Number(id), noteContent.trim(), user.name);
       if (result) {
         message.success('备注添加成功');
         setCaseData(result);
@@ -118,7 +129,7 @@ const CaseDetail: React.FC = () => {
         return;
       }
       setCloseSubmitting(true);
-      const result = closeCase(Number(id), values.conclusion, values.conclusion_note.trim());
+      const result = await closeCase(Number(id), values.conclusion, values.conclusion_note.trim());
       if (result) {
         message.success('案件已结案');
         setCaseData(result);

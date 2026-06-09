@@ -14,6 +14,14 @@ import {
   DecisionType,
   PaginatedResponse,
 } from '../types';
+import {
+  getCases as apiGetCases,
+  getCaseById as apiGetCaseById,
+  assignCase as apiAssignCase,
+  closeCase as apiCloseCase,
+  addCaseNote as apiAddCaseNote,
+  getCaseStats as apiGetCaseStats,
+} from '../api/cases';
 
 const scoreToRiskLevel = (score: number): CaseRiskLevel => {
   if (score >= 71) return 'high';
@@ -297,66 +305,68 @@ const now = dayjs();
 
 const analystNames = ['张伟', '李娜', '王芳', '刘洋', '陈静'];
 
-const initialCases: Case[] = mockTransactions.map((txn, idx) => {
-  const ruleHits = mockRuleHitsSets[idx % mockRuleHitsSets.length];
-  const riskScore = ruleHits.reduce((sum, h) => sum + h.score, 0);
-  const status: CaseStatus = idx < 3 ? 'pending' : idx < 7 ? 'investigating' : 'closed';
-  const assignedIdx = idx < 3 ? undefined : idx % 5;
-  const conclusion: CaseConclusion | undefined =
-    status === 'closed'
-      ? (['pass', 'fraud', 'false_positive'] as CaseConclusion[])[idx % 3]
-      : undefined;
-  const closedAt = status === 'closed' ? now.subtract(idx, 'hour').toISOString() : undefined;
-  const createdAt = now.subtract(idx * 3 + 2, 'hour').toISOString();
-
-  return {
-    id: idx + 1,
-    case_no: generateCaseNo(createdAt, idx + 1),
-    status,
-    risk_level: scoreToRiskLevel(riskScore),
-    risk_score: riskScore,
-    assigned_to: assignedIdx !== undefined ? `user_${assignedIdx + 1}` : undefined,
-    assigned_to_name: assignedIdx !== undefined ? analystNames[assignedIdx] : undefined,
-    assigned_at: assignedIdx !== undefined ? now.subtract(idx * 2 + 1, 'hour').toISOString() : undefined,
-    conclusion,
-    conclusion_note:
+const buildMockCases = (): Case[] => {
+  return mockTransactions.map((txn, idx) => {
+    const ruleHits = mockRuleHitsSets[idx % mockRuleHitsSets.length];
+    const riskScore = ruleHits.reduce((sum, h) => sum + h.score, 0);
+    const status: CaseStatus = idx < 3 ? 'pending' : idx < 7 ? 'investigating' : 'closed';
+    const assignedIdx = idx < 3 ? undefined : idx % 5;
+    const conclusion: CaseConclusion | undefined =
       status === 'closed'
-        ? conclusion === 'fraud'
-          ? '经核实，该卡片确实被盗刷，交易地点与持卡人日常消费习惯严重不符，设备指纹与历史设备完全不同，确认欺诈交易。'
-          : conclusion === 'false_positive'
-          ? '持卡人事后反馈为本人交易，因在境外旅游导致触发异地和境外交易规则，属于正常消费，为误报。'
-          : '交易核实为持卡人本人正常消费，虽金额较大但符合其历史消费能力，已通过审批。'
-        : undefined,
-    closed_at: closedAt,
-    created_at: createdAt,
-    updated_at: closedAt || createdAt,
-    transaction_id: txn.id,
-    transaction: txn,
-    rule_hits: ruleHits,
-    notes:
-      idx >= 3
-        ? [
-            {
-              id: 1,
-              content: '已初步核实交易基本信息，正在联系持卡人确认。',
-              operator: analystNames[assignedIdx || 0],
-              created_at: now.subtract(idx * 2, 'hour').toISOString(),
-            },
-            ...(idx >= 5
-              ? [
-                  {
-                    id: 2,
-                    content: '持卡人电话未接通，已发送短信和邮件通知，请其尽快回复确认。',
-                    operator: analystNames[assignedIdx || 0],
-                    created_at: now.subtract(idx, 'hour').toISOString(),
-                  },
-                ]
-              : []),
-          ]
-        : [],
-    history_transactions: generateHistoryTxns(txn.card_hash, txn.transaction_time),
-  };
-});
+        ? (['pass', 'fraud', 'false_positive'] as CaseConclusion[])[idx % 3]
+        : undefined;
+    const closedAt = status === 'closed' ? now.subtract(idx, 'hour').toISOString() : undefined;
+    const createdAt = now.subtract(idx * 3 + 2, 'hour').toISOString();
+
+    return {
+      id: idx + 1,
+      case_no: generateCaseNo(createdAt, idx + 1),
+      status,
+      risk_level: scoreToRiskLevel(riskScore),
+      risk_score: riskScore,
+      assigned_to: assignedIdx !== undefined ? `user_${assignedIdx + 1}` : undefined,
+      assigned_to_name: assignedIdx !== undefined ? analystNames[assignedIdx] : undefined,
+      assigned_at: assignedIdx !== undefined ? now.subtract(idx * 2 + 1, 'hour').toISOString() : undefined,
+      conclusion,
+      conclusion_note:
+        status === 'closed'
+          ? conclusion === 'fraud'
+            ? '经核实，该卡片确实被盗刷，交易地点与持卡人日常消费习惯严重不符，设备指纹与历史设备完全不同，确认欺诈交易。'
+            : conclusion === 'false_positive'
+            ? '持卡人事后反馈为本人交易，因在境外旅游导致触发异地和境外交易规则，属于正常消费，为误报。'
+            : '交易核实为持卡人本人正常消费，虽金额较大但符合其历史消费能力，已通过审批。'
+          : undefined,
+      closed_at: closedAt,
+      created_at: createdAt,
+      updated_at: closedAt || createdAt,
+      transaction_id: txn.id,
+      transaction: txn,
+      rule_hits: ruleHits,
+      notes:
+        idx >= 3
+          ? [
+              {
+                id: 1,
+                content: '已初步核实交易基本信息，正在联系持卡人确认。',
+                operator: analystNames[assignedIdx || 0],
+                created_at: now.subtract(idx * 2, 'hour').toISOString(),
+              },
+              ...(idx >= 5
+                ? [
+                    {
+                      id: 2,
+                      content: '持卡人电话未接通，已发送短信和邮件通知，请其尽快回复确认。',
+                      operator: analystNames[assignedIdx || 0],
+                      created_at: now.subtract(idx, 'hour').toISOString(),
+                    },
+                  ]
+                : []),
+            ]
+          : [],
+      history_transactions: generateHistoryTxns(txn.card_hash, txn.transaction_time),
+    };
+  });
+};
 
 export interface CaseStoreState {
   cases: Case[];
@@ -364,20 +374,29 @@ export interface CaseStoreState {
     filter: CaseListFilter & { page: number; page_size: number },
   ) => Promise<PaginatedResponse<Case>>;
   getCase: (id: number) => Case | undefined;
-  assignCase: (caseId: number, userId: string, userName: string) => Case | undefined;
+  assignCase: (caseId: number, userId: string, userName: string) => Promise<Case | undefined>;
   closeCase: (
     caseId: number,
     conclusion: CaseConclusion,
     conclusionNote: string,
-  ) => Case | undefined;
-  addNote: (caseId: number, content: string, operator: string) => Case | undefined;
-  getStats: () => CaseStats;
+  ) => Promise<Case | undefined>;
+  addNote: (caseId: number, content: string, operator: string) => Promise<Case | undefined>;
+  getStats: () => Promise<CaseStats>;
 }
 
 export const useCaseStore = create<CaseStoreState>((set, get) => ({
-  cases: initialCases,
+  cases: buildMockCases(),
 
   getCaseList: async (filter) => {
+    try {
+      const res = await apiGetCases(filter);
+      if (res.code === 0 && res.data) {
+        return res.data;
+      }
+    } catch {
+      // fallback to local mock
+    }
+
     const { cases } = get();
     let filtered = [...cases];
 
@@ -416,7 +435,19 @@ export const useCaseStore = create<CaseStoreState>((set, get) => ({
     return get().cases.find((c) => c.id === id);
   },
 
-  assignCase: (caseId, userId, userName) => {
+  assignCase: async (caseId, userId, userName) => {
+    try {
+      const res = await apiAssignCase(caseId);
+      if (res.code === 0 && res.data) {
+        set((state) => ({
+          cases: state.cases.map((c) => (c.id === caseId ? res.data! : c)),
+        }));
+        return res.data;
+      }
+    } catch {
+      // fallback to local mock
+    }
+
     let assigned: Case | undefined;
     set((state) => {
       const newCases = state.cases.map((c) => {
@@ -438,7 +469,19 @@ export const useCaseStore = create<CaseStoreState>((set, get) => ({
     return assigned;
   },
 
-  closeCase: (caseId, conclusion, conclusionNote) => {
+  closeCase: async (caseId, conclusion, conclusionNote) => {
+    try {
+      const res = await apiCloseCase(caseId, { conclusion, conclusion_note: conclusionNote });
+      if (res.code === 0 && res.data) {
+        set((state) => ({
+          cases: state.cases.map((c) => (c.id === caseId ? res.data! : c)),
+        }));
+        return res.data;
+      }
+    } catch {
+      // fallback to local mock
+    }
+
     let closed: Case | undefined;
     set((state) => {
       const newCases = state.cases.map((c) => {
@@ -460,7 +503,19 @@ export const useCaseStore = create<CaseStoreState>((set, get) => ({
     return closed;
   },
 
-  addNote: (caseId, content, operator) => {
+  addNote: async (caseId, content, operator) => {
+    try {
+      const res = await apiAddCaseNote(caseId, { content });
+      if (res.code === 0 && res.data) {
+        set((state) => ({
+          cases: state.cases.map((c) => (c.id === caseId ? res.data! : c)),
+        }));
+        return res.data;
+      }
+    } catch {
+      // fallback to local mock
+    }
+
     let updated: Case | undefined;
     set((state) => {
       const newCases = state.cases.map((c) => {
@@ -485,7 +540,16 @@ export const useCaseStore = create<CaseStoreState>((set, get) => ({
     return updated;
   },
 
-  getStats: () => {
+  getStats: async () => {
+    try {
+      const res = await apiGetCaseStats();
+      if (res.code === 0 && res.data) {
+        return res.data;
+      }
+    } catch {
+      // fallback to local mock
+    }
+
     const { cases } = get();
     const pendingCount = cases.filter((c) => c.status === 'pending').length;
     const investigatingCount = cases.filter((c) => c.status === 'investigating').length;

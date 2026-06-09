@@ -15,6 +15,21 @@ from .rule_state_machine import (
     modify_active_rule,
     compare_versions,
 )
+from .case_service import (
+    generate_case_no,
+    acquire_case_lock,
+    release_case_lock,
+    create_case_from_transaction,
+    get_case_by_id,
+    list_cases,
+    assign_case,
+    close_case,
+    add_case_note,
+    get_case_stats,
+    get_user_history_transactions,
+    build_case_response,
+    score_to_risk_level,
+)
 
 __all__ = [
     "check_threshold_rules",
@@ -30,4 +45,17 @@ __all__ = [
     "disable_rule",
     "modify_active_rule",
     "compare_versions",
+    "generate_case_no",
+    "acquire_case_lock",
+    "release_case_lock",
+    "create_case_from_transaction",
+    "get_case_by_id",
+    "list_cases",
+    "assign_case",
+    "close_case",
+    "add_case_note",
+    "get_case_stats",
+    "get_user_history_transactions",
+    "build_case_response",
+    "score_to_risk_level",
 ]

@@ -47,9 +47,11 @@ from app.api.rules import router as rules_router
 from app.api.sandbox import router as sandbox_router
 from app.api.templates import router as templates_router
 from app.api.transactions import router as transactions_router
+from app.api.cases import router as cases_router
 
 app.include_router(rules_router, prefix=settings.API_V1_PREFIX)
 app.include_router(transactions_router, prefix=settings.API_V1_PREFIX)
 app.include_router(dashboard_router, prefix=settings.API_V1_PREFIX)
 app.include_router(sandbox_router, prefix=settings.API_V1_PREFIX)
 app.include_router(templates_router, prefix=settings.API_V1_PREFIX)
+app.include_router(cases_router, prefix=settings.API_V1_PREFIX)
