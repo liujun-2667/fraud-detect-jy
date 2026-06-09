@@ -6,6 +6,8 @@ let wsInstance: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 const listeners: Array<(msg: any) => void> = [];
 
+const API_BASE_PATH = '/api/v1';
+
 export const addWsListener = (fn: (msg: any) => void) => {
   listeners.push(fn);
   return () => {
@@ -14,11 +16,37 @@ export const addWsListener = (fn: (msg: any) => void) => {
   };
 };
 
+const getToken = (): string => {
+  if (typeof window === 'undefined') return '';
+  try {
+    return localStorage.getItem('token') || '';
+  } catch {
+    return '';
+  }
+};
+
 const getWsUrl = (): string => {
   if (typeof window === 'undefined') return '';
-  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
-  return `${proto}//${host}/api/v1/cases/ws`;
+
+  const isLocalhost =
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname === '';
+
+  let proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+
+  const host = isLocalhost ? 'localhost:8000' : window.location.host;
+
+  const token = getToken();
+  const query = token ? `?token=${encodeURIComponent(token)}` : '';
+
+  const url = `${proto}//${host}${API_BASE_PATH}/cases/ws${query}`;
+
+  if (typeof console !== 'undefined' && console.debug) {
+    console.debug('[WebSocket] connecting to:', url);
+  }
+
+  return url;
 };
 
 const connect = () => {
@@ -28,6 +56,9 @@ const connect = () => {
     wsInstance = ws;
 
     ws.onopen = () => {
+      if (typeof console !== 'undefined' && console.debug) {
+        console.debug('[WebSocket] connection established');
+      }
       useCaseStore.getState().setWsConnected(true);
       requestNotificationPermission();
     };
@@ -62,7 +93,10 @@ const connect = () => {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      if (typeof console !== 'undefined' && console.debug) {
+        console.debug('[WebSocket] connection closed, code=', event.code, 'reason=', event.reason);
+      }
       useCaseStore.getState().setWsConnected(false);
       if (!reconnectTimer) {
         reconnectTimer = setTimeout(() => {
@@ -72,7 +106,10 @@ const connect = () => {
       }
     };
 
-    ws.onerror = () => {
+    ws.onerror = (event) => {
+      if (typeof console !== 'undefined' && console.error) {
+        console.error('[WebSocket] connection error, will retry in 5s');
+      }
       try {
         ws.close();
       } catch (e) {
@@ -80,6 +117,9 @@ const connect = () => {
       }
     };
   } catch (e) {
+    if (typeof console !== 'undefined' && console.error) {
+      console.error('[WebSocket] failed to create connection:', e);
+    }
     if (!reconnectTimer) {
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;

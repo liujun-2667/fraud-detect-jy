@@ -18,7 +18,6 @@ import {
 } from '../types';
 import {
   getCases as apiGetCases,
-  getCaseById as apiGetCaseById,
   assignCase as apiAssignCase,
   autoAssignCase as apiAutoAssignCase,
   transferCase as apiTransferCase,
@@ -284,9 +283,8 @@ const mockRuleHitsSets: CaseRuleHit[][] = [
   ],
 ];
 
-const generateHistoryTxns = (cardHash: string, baseTime: string): CaseHistoryTxn[] => {
+const generateHistoryTxns = (_cardHash: string, baseTime: string): CaseHistoryTxn[] => {
   const history: CaseHistoryTxn[] = [];
-  const decisions: DecisionType[] = ['allow', 'review', 'block'];
   for (let i = 0; i < 8; i++) {
     const time = dayjs(baseTime).subtract(i + 1, 'hour').toISOString();
     const score = Math.floor(Math.random() * 100);

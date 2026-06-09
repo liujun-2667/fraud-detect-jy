@@ -22,7 +22,6 @@ import {
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { useCaseStore, requestNotificationPermission } from '../../store/useCaseStore';
-import { useAuthStore } from '../../store/useAuthStore';
 import {
   Case,
   CaseStatus,
@@ -35,7 +34,6 @@ const { RangePicker } = DatePicker;
 
 const CasesList: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuthStore();
   const { getCaseList, autoAssignCase } = useCaseStore();
 
   const [loading, setLoading] = useState(false);
@@ -104,6 +102,7 @@ const CasesList: React.FC = () => {
     const result = await autoAssignCase(record.id);
     if (result) {
       message.success(`案件已自动分配给 ${result.assigned_to_name}`);
+      setCases((prev) => prev.map((c) => (c.id === result.id ? result : c)));
       loadCases();
     } else {
       message.error('案件分配失败');

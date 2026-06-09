@@ -15,7 +15,6 @@ import {
   Empty,
   Divider,
   Typography,
-  Tooltip,
   Badge,
   Alert,
   Modal,
@@ -899,7 +898,11 @@ const CaseDetail: React.FC = () => {
               optionFilterProp="children"
             >
               {analysts
-                .filter((a) => a.user_id !== user?.id)
+                .filter(
+                  (a) =>
+                    String(a.user_id) !== String(user?.id) &&
+                    a.user_name !== user?.name,
+                )
                 .map((a) => (
                   <Option key={a.user_id} value={a.user_id}>
                     <Space>
