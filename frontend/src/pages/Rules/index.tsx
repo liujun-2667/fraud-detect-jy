@@ -25,7 +25,7 @@ import {
   EditOutlined,
   EyeOutlined,
   CheckCircleOutlined,
-  StopCircleOutlined,
+  StopOutlined,
   ClockCircleOutlined,
   SendOutlined,
   CloseCircleOutlined,
@@ -361,7 +361,7 @@ const Rules: React.FC = () => {
         if (canDisable) {
           dropdownItems.push({
             key: 'disable',
-            icon: <StopCircleOutlined style={{ color: '#ff4d4f' }} />,
+            icon: <StopOutlined style={{ color: '#ff4d4f' }} />,
             label: '停用',
             onClick: () => latest && handleDisable(record, latest),
           });
@@ -411,7 +411,7 @@ const Rules: React.FC = () => {
       case 'reviewing':
         return <ClockCircleOutlined />;
       case 'disabled':
-        return <StopCircleOutlined />;
+        return <StopOutlined />;
       default:
         return null;
     }

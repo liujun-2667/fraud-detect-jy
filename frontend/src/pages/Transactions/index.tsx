@@ -50,7 +50,6 @@ const Transactions: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [currentTransaction, setCurrentTransaction] = useState<Transaction | null>(null);
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
-  const [evaluationsLoading, setEvaluationsLoading] = useState(false);
 
   const [cardForm] = Form.useForm();
   const [cardQueryLoading, setCardQueryLoading] = useState(false);
@@ -199,7 +198,7 @@ const Transactions: React.FC = () => {
       dataIndex: 'region',
       key: 'region',
       width: 100,
-      render: (val?: string, record: Transaction) => (
+      render: (val: string | undefined, record: Transaction) => (
         <Space>
           <span>{val || '-'}</span>
           {record.is_overseas && <Tag color="red">境外</Tag>}

@@ -18,7 +18,6 @@ import {
   Modal,
   List,
   Tag,
-  Tree,
   Tooltip,
   Typography,
   Descriptions,
@@ -68,7 +67,7 @@ const RuleEditor: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [rule, setRule] = useState<Rule | null>(null);
+  const [_rule, setRule] = useState<Rule | null>(null);
   const [testResult, setTestResult] = useState<Evaluation | null>(null);
   const [testModalVisible, setTestModalVisible] = useState(false);
 
@@ -767,7 +766,7 @@ const RuleEditor: React.FC = () => {
                 dataSource={testResult.rule_hits || []}
                 renderItem={(hit) => (
                   <List.Item>
-                    <Space style={{ width: '100%' }} justify="space-between">
+                    <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between' }}>
                       <Space>
                         <Tag color={hit.is_hit ? 'red' : 'default'}>
                           {hit.is_hit ? '命中' : '未命中'}
@@ -778,7 +777,7 @@ const RuleEditor: React.FC = () => {
                         <Text type="secondary">权重: {hit.weight}</Text>
                         <Text type="secondary">得分: {hit.score}</Text>
                       </Space>
-                    </Space>
+                    </div>
                   </List.Item>
                 )}
               />

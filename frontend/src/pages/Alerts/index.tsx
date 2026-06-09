@@ -18,7 +18,7 @@ import {
 } from 'antd';
 import {
   CheckCircleOutlined,
-  StopCircleOutlined,
+  StopOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -261,7 +261,7 @@ const Alerts: React.FC = () => {
           <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => handleApprove(record)}>
             通过
           </Button>
-          <Button size="small" danger icon={<StopCircleOutlined />} onClick={() => handleBlock(record)}>
+          <Button size="small" danger icon={<StopOutlined />} onClick={() => handleBlock(record)}>
             拦截
           </Button>
         </Space>
@@ -307,7 +307,7 @@ const Alerts: React.FC = () => {
           <Button type="primary" icon={<CheckCircleOutlined />} onClick={handleBatchApprove}>
             批量通过
           </Button>
-          <Button danger icon={<StopCircleOutlined />} onClick={handleBatchBlock}>
+          <Button danger icon={<StopOutlined />} onClick={handleBatchBlock}>
             批量拦截
           </Button>
         </Space>
